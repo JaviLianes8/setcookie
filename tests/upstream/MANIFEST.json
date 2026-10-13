@@ -1,0 +1,92 @@
+{
+  "rfc6265.txt": {
+    "title": "RFC 6265, HTTP State Management Mechanism (April 2011)",
+    "url": "https://www.rfc-editor.org/rfc/rfc6265.txt",
+    "revision": "RFC 6265 as published (RFCs are immutable)",
+    "fetched": "2026-10-13",
+    "licence": "IETF Trust Legal Provisions",
+    "size": 79724,
+    "sha256": "dc4177094813e85a44a7897b892b76bc09160b3a03aea44f0f511f3a98f91933"
+  },
+  "draft-ietf-httpbis-rfc6265bis-22.txt": {
+    "title": "draft-ietf-httpbis-rfc6265bis-22, Cookies: HTTP State Management Mechanism (1 December 2025)",
+    "url": "https://www.ietf.org/archive/id/draft-ietf-httpbis-rfc6265bis-22.txt",
+    "revision": "revision 22, the latest on the datatracker on 2026-10-13",
+    "fetched": "2026-10-13",
+    "licence": "IETF Trust Legal Provisions",
+    "size": 138768,
+    "sha256": "762b37b40b2286da2e9250bb24a0f9dfca790b11fe20bcde0c67fcbbad28979d"
+  },
+  "draft-cutler-httpbis-partitioned-cookies-01.txt": {
+    "title": "draft-cutler-httpbis-partitioned-cookies-01, Cookies Having Independent Partitioned State (10 November 2022)",
+    "url": "https://www.ietf.org/archive/id/draft-cutler-httpbis-partitioned-cookies-01.txt",
+    "revision": "revision 01, the latest on the datatracker on 2026-10-13",
+    "fetched": "2026-10-13",
+    "licence": "IETF Trust Legal Provisions",
+    "size": 18387,
+    "sha256": "bae96cc51bbab8bc3f46e7d9270ae3d07c884360022c7f6f19c741462a7aed24"
+  },
+  "wpt/name.html": {
+    "title": "web-platform-tests cookies/name/name.html",
+    "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/1b67fafba1d46d158b45a831bb604d86c9b5c5a8/cookies/name/name.html",
+    "revision": "web-platform-tests/wpt commit 1b67fafba1d46d158b45a831bb604d86c9b5c5a8",
+    "fetched": "2026-10-13",
+    "licence": "BSD-3-Clause (LICENSE.md of web-platform-tests/wpt)",
+    "size": 5647,
+    "sha256": "d3fca366a5390de24634890d07f5dc74649c3cdb1c5e053352168b5cae87a2af"
+  },
+  "wpt/value.html": {
+    "title": "web-platform-tests cookies/value/value.html",
+    "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/1b67fafba1d46d158b45a831bb604d86c9b5c5a8/cookies/value/value.html",
+    "revision": "web-platform-tests/wpt commit 1b67fafba1d46d158b45a831bb604d86c9b5c5a8",
+    "fetched": "2026-10-13",
+    "licence": "BSD-3-Clause (LICENSE.md of web-platform-tests/wpt)",
+    "size": 5397,
+    "sha256": "b4c4df4845a3d4c23e519ccc0d58c411d37d8610e21aab70531139567e649486"
+  },
+  "wpt/max-age.html": {
+    "title": "web-platform-tests cookies/attributes/max-age.html",
+    "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/1b67fafba1d46d158b45a831bb604d86c9b5c5a8/cookies/attributes/max-age.html",
+    "revision": "web-platform-tests/wpt commit 1b67fafba1d46d158b45a831bb604d86c9b5c5a8",
+    "fetched": "2026-10-13",
+    "licence": "BSD-3-Clause (LICENSE.md of web-platform-tests/wpt)",
+    "size": 2722,
+    "sha256": "9a6fe4fd1edb9a8cd094a99b4a6fc191a31fbb698fcc8890e87bdbc7ae487af5"
+  },
+  "wpt/invalid.html": {
+    "title": "web-platform-tests cookies/attributes/invalid.html",
+    "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/1b67fafba1d46d158b45a831bb604d86c9b5c5a8/cookies/attributes/invalid.html",
+    "revision": "web-platform-tests/wpt commit 1b67fafba1d46d158b45a831bb604d86c9b5c5a8",
+    "fetched": "2026-10-13",
+    "licence": "BSD-3-Clause (LICENSE.md of web-platform-tests/wpt)",
+    "size": 5672,
+    "sha256": "d0f32bb78e706b51fc2e6fb7a3ddce2e8f1add43631c6aff25a324ceec99aa30"
+  },
+  "wpt/expires.html": {
+    "title": "web-platform-tests cookies/attributes/expires.html",
+    "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/1b67fafba1d46d158b45a831bb604d86c9b5c5a8/cookies/attributes/expires.html",
+    "revision": "web-platform-tests/wpt commit 1b67fafba1d46d158b45a831bb604d86c9b5c5a8",
+    "fetched": "2026-10-13",
+    "licence": "BSD-3-Clause (LICENSE.md of web-platform-tests/wpt)",
+    "size": 5144,
+    "sha256": "0c237f0247b1c1c59b74e832ece358b77c70173f3594dd4faa83351dda95a451"
+  },
+  "wpt/path.html": {
+    "title": "web-platform-tests cookies/attributes/path.html",
+    "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/1b67fafba1d46d158b45a831bb604d86c9b5c5a8/cookies/attributes/path.html",
+    "revision": "web-platform-tests/wpt commit 1b67fafba1d46d158b45a831bb604d86c9b5c5a8",
+    "fetched": "2026-10-13",
+    "licence": "BSD-3-Clause (LICENSE.md of web-platform-tests/wpt)",
+    "size": 4995,
+    "sha256": "68902e72051ee0e165af2c7ab31d3b989be373d6cc6ef2e08887b86923cb4c85"
+  },
+  "wpt/size-name-and-value.html": {
+    "title": "web-platform-tests cookies/size/name-and-value.html",
+    "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/1b67fafba1d46d158b45a831bb604d86c9b5c5a8/cookies/size/name-and-value.html",
+    "revision": "web-platform-tests/wpt commit 1b67fafba1d46d158b45a831bb604d86c9b5c5a8",
+    "fetched": "2026-10-13",
+    "licence": "BSD-3-Clause (LICENSE.md of web-platform-tests/wpt)",
+    "size": 3029,
+    "sha256": "6ee5feac2958578f871bf7762adeac0e4431a4456ec13d8f28e5f3b7c3d42262"
+  }
+}

@@ -1,61 +1,88 @@
-"""Parse a single Set-Cookie header line into a typed Cookie."""
+"""Parse one Set-Cookie line with the user agent algorithm of section 5.6."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from ._dates import parse_http_date
+from ._chars import (
+    MAX_ATTRIBUTE_OCTETS,
+    MAX_PAIR_OCTETS,
+    ascii_lower,
+    has_forbidden_ctl,
+    octets,
+    trim,
+)
+from ._dates import parse_date
 from ._errors import CookieError
 from ._model import Cookie, SameSite
+from ._strict import check_strict
 
 _SAME_SITE: dict[str, SameSite] = {"lax": "Lax", "strict": "Strict", "none": "None"}
 
 
-def parse(line: str) -> Cookie:
-    """Decode one Set-Cookie line; raise CookieError when it has no name=value pair.
+def parse(line: str, *, strict: bool = False) -> Cookie:
+    """Decode one Set-Cookie line the way a user agent reads it.
 
-    Attribute names are matched case-insensitively and unrecognised or malformed
-    attributes are ignored rather than rejected, matching how clients read the header.
+    Raise CookieError when a user agent ignores the whole line: a control character
+    other than HTAB, an empty name with an empty value, or a name and value longer than
+    4096 octets together. Unknown or malformed attributes are skipped, never rejected.
+    With ``strict=True`` the line must also follow the server grammar of section 4.1.1,
+    and CookieError names the first rule it breaks.
     """
-    segments = line.split(";")
-    pair = segments[0].strip()
-    if "=" not in pair:
-        raise CookieError(f"missing name=value pair: {line!r}")
-    raw_name, _, raw_value = pair.partition("=")
-    name = raw_name.strip()
-    if not name:
-        raise CookieError(f"empty cookie name: {line!r}")
+    if not isinstance(line, str):
+        raise TypeError(f"expected str, got {type(line).__name__}")
+    if strict:
+        check_strict(line)
+    if has_forbidden_ctl(line):
+        raise CookieError(f"control character in the line: {line!r}")
+    pair, separator, attributes = line.partition(";")
+    if "=" in pair:
+        raw_name, _, raw_value = pair.partition("=")
+    else:
+        raw_name, raw_value = "", pair
+    name, value = trim(raw_name), trim(raw_value)
+    if octets(name) + octets(value) > MAX_PAIR_OCTETS:
+        raise CookieError("the name and value are longer than 4096 octets together")
+    if not name and not value:
+        raise CookieError(f"empty name and empty value: {line!r}")
+    return _read_attributes(name, value, attributes.split(";") if separator else [])
 
+
+def _read_attributes(name: str, value: str, avs: list[str]) -> Cookie:
     expires: datetime | None = None
     max_age: int | None = None
     domain: str | None = None
     path: str | None = None
-    secure = False
-    http_only = False
+    secure = http_only = partitioned = False
     same_site: SameSite | None = None
-
-    for segment in segments[1:]:
-        key, _, raw = segment.partition("=")
-        key = key.strip().lower()
-        raw = raw.strip()
-        if key == "expires":
-            expires = parse_http_date(raw)
-        elif key == "max-age":
-            max_age = _to_int(raw)
-        elif key == "domain":
-            domain = raw or None
-        elif key == "path":
-            path = raw or None
-        elif key == "secure":
+    extensions: list[tuple[str, str | None]] = []
+    for av in avs:
+        raw_key, equals, raw = av.partition("=")
+        key, raw = trim(raw_key), trim(raw)
+        if not key or octets(raw) > MAX_ATTRIBUTE_OCTETS:
+            continue
+        keyword = ascii_lower(key)
+        if keyword == "expires":
+            expires = parse_date(raw) or expires
+        elif keyword == "max-age":
+            max_age = _delta_seconds(raw, max_age)
+        elif keyword == "domain":
+            domain = ascii_lower(raw[1:] if raw.startswith(".") else raw) or None
+        elif keyword == "path":
+            path = raw if raw.startswith("/") else ""
+        elif keyword == "secure":
             secure = True
-        elif key == "httponly":
+        elif keyword == "httponly":
             http_only = True
-        elif key == "samesite":
-            same_site = _SAME_SITE.get(raw.lower())
-
+        elif keyword == "partitioned":
+            partitioned = True
+        elif keyword == "samesite":
+            same_site = _SAME_SITE.get(ascii_lower(raw))
+        else:
+            extensions.append((key, raw if equals else None))
     return Cookie(
         name=name,
-        value=raw_value.strip(),
+        value=value,
         expires=expires,
         max_age=max_age,
         domain=domain,
@@ -63,11 +90,14 @@ def parse(line: str) -> Cookie:
         secure=secure,
         http_only=http_only,
         same_site=same_site,
+        partitioned=partitioned,
+        extensions=tuple(extensions),
     )
 
 
-def _to_int(raw: str) -> int | None:
-    try:
-        return int(raw)
-    except ValueError:
-        return None
+def _delta_seconds(raw: str, previous: int | None) -> int | None:
+    """Section 5.6.2: DIGITs with an optional leading '-'; anything else keeps ``previous``."""
+    digits = raw[1:] if raw.startswith("-") else raw
+    if not digits or not all("0" <= char <= "9" for char in digits):
+        return previous
+    return int(raw)
