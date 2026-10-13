@@ -4,7 +4,17 @@ import setcookie
 
 # The public API. Add every exported name here as the library grows; this list is the
 # contract and the test below fails if the module and this list disagree.
-PUBLIC_API: list[str] = ["Cookie", "CookieError", "SameSite", "build", "parse"]
+PUBLIC_API: list[str] = [
+    "Cookie",
+    "CookieError",
+    "SameSite",
+    "StoredCookie",
+    "build",
+    "expire",
+    "parse",
+    "parse_date",
+    "receive",
+]
 
 
 def test_all_lists_exactly_the_public_api() -> None:

@@ -1,19 +1,113 @@
-"""Locale-independent HTTP-date formatting and tolerant parsing."""
+"""Cookie dates: the parsing algorithm of section 5.1.1 and IMF-fixdate output."""
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 
 _DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 _MONTHS = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 )  # fmt: skip
+_LOWER_MONTHS = tuple(month.lower() for month in _MONTHS)
+
+# The productions of section 5.1.1; [0-9] rather than \d so no non-ASCII digit matches.
+_TIME = re.compile(r"([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2})(?:[^0-9].*)?", re.DOTALL)
+_DAY = re.compile(r"([0-9]{1,2})(?:[^0-9].*)?", re.DOTALL)
+_YEAR = re.compile(r"([0-9]{2,4})(?:[^0-9].*)?", re.DOTALL)
+_FIXDATE = re.compile(
+    r"(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ([0-9]{2}) "
+    r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4}) "
+    r"([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT"
+)
+
+
+def _is_delimiter(char: str) -> bool:
+    code = ord(char)
+    return (
+        code == 0x09
+        or 0x20 <= code <= 0x2F
+        or 0x3B <= code <= 0x40
+        or 0x5B <= code <= 0x60
+        or 0x7B <= code <= 0x7E
+    )
+
+
+def _tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    current: list[str] = []
+    for char in text:
+        if _is_delimiter(char):
+            if current:
+                tokens.append("".join(current))
+                current = []
+        else:
+            current.append(char)
+    if current:
+        tokens.append("".join(current))
+    return tokens
+
+
+def parse_date(text: str) -> datetime | None:
+    """Parse a cookie-date with the algorithm of section 5.1.1; None when it fails.
+
+    The result is an aware datetime in UTC. Zone names and offsets are not read: the
+    algorithm treats every time as UTC.
+    """
+    time: tuple[int, int, int] | None = None
+    day: int | None = None
+    month: int | None = None
+    year: int | None = None
+    for token in _tokens(text):
+        if time is None and (match := _TIME.fullmatch(token)):
+            time = (int(match[1]), int(match[2]), int(match[3]))
+        elif day is None and (match := _DAY.fullmatch(token)):
+            day = int(match[1])
+        elif month is None and token[:3].isascii() and token[:3].lower() in _LOWER_MONTHS:
+            month = _LOWER_MONTHS.index(token[:3].lower()) + 1
+        elif year is None and (match := _YEAR.fullmatch(token)):
+            year = int(match[1])
+    if time is None or day is None or month is None or year is None:
+        return None
+    if 70 <= year <= 99:
+        year += 1900
+    elif 0 <= year <= 69:
+        year += 2000
+    hour, minute, second = time
+    if not 1 <= day <= 31 or year < 1601 or hour > 23 or minute > 59 or second > 59:
+        return None
+    try:
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def parse_fixdate(text: str) -> datetime | None:
+    """Parse an exact IMF-fixdate (RFC 9110 section 5.6.7); None for anything else."""
+    match = _FIXDATE.fullmatch(text)
+    if match is None:
+        return None
+    try:
+        moment = datetime(
+            int(match[4]),
+            _MONTHS.index(match[3]) + 1,
+            int(match[2]),
+            int(match[5]),
+            int(match[6]),
+            int(match[7]),
+            tzinfo=timezone.utc,
+        )
+    except ValueError:
+        return None
+    return moment if _DAYS[moment.weekday()] == match[1] else None
 
 
 def format_http_date(value: datetime) -> str:
-    """Render a datetime as an RFC 7231 IMF-fixdate in GMT, regardless of locale."""
+    """Render a datetime as an IMF-fixdate in GMT, regardless of locale.
+
+    A naive datetime is taken to be UTC.
+    """
     moment = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     moment = moment.astimezone(timezone.utc)
     return (
@@ -21,14 +115,3 @@ def format_http_date(value: datetime) -> str:
         f"{moment.day:02d} {_MONTHS[moment.month - 1]} {moment.year:04d} "
         f"{moment.hour:02d}:{moment.minute:02d}:{moment.second:02d} GMT"
     )
-
-
-def parse_http_date(text: str) -> datetime | None:
-    """Parse an HTTP date tolerantly, returning None when it cannot be understood."""
-    try:
-        parsed = parsedate_to_datetime(text.strip())
-    except (TypeError, ValueError):
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)

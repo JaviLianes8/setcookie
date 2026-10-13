@@ -30,11 +30,11 @@ header = build(
 # "Domain=example.com; Path=/app; Secure; HttpOnly; SameSite=Lax"
 
 cookie = parse(header)
-cookie.name        # "sid"
-cookie.max_age     # 3600
-cookie.same_site   # "Lax"
-cookie.expires     # datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
-cookie.secure      # True
+cookie.name  # "sid"
+cookie.max_age  # 3600
+cookie.same_site  # "Lax"
+cookie.expires  # datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+cookie.secure  # True
 ```
 
 `build` returns a string. `parse` returns a frozen `Cookie` with typed fields:

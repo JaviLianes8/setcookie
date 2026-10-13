@@ -3,11 +3,11 @@
 Progress:
 - [x] Brainstorm ranked improvements (this file)
 - [x] Pin the ground truth: RFC 6265 and errata, draft-ietf-httpbis-rfc6265bis-22, the partitioned cookies draft, web-platform-tests cookie parser tests
-- [ ] Parser on the user agent algorithm (section 5.6): CTL rejection, nameless cookies, WSP trimming, size limits, last attribute wins
-- [ ] Cookie date algorithm (section 5.1.1) and Max-Age digits (section 5.6.2)
-- [ ] Strict mode: the server grammar of section 4.1.1 with reasons
-- [ ] Safe builder: token names, cookie-octet values, attribute guards, prefix, SameSite=None and Partitioned rules, `expire`
-- [ ] Storage model: `receive` with default-path, domain and path matching, secure origin, prefixes, 400 day cap
+- [x] Parser on the user agent algorithm (section 5.6): CTL rejection, nameless cookies, WSP trimming, size limits, last attribute wins
+- [x] Cookie date algorithm (section 5.1.1) and Max-Age digits (section 5.6.2)
+- [x] Strict mode: the server grammar of section 4.1.1 with reasons
+- [x] Safe builder: token names, cookie-octet values, attribute guards, prefix, SameSite=None and Partitioned rules, `expire`
+- [x] Storage model: `receive` with default-path, domain and path matching, secure origin, prefixes, 400 day cap
 - [ ] Command line
 - [ ] Contracts: pinned sources, web-platform-tests corpus, README examples, installed wheel
 - [ ] Docs and packaging: README, CHANGELOG, metadata, sdist contents

@@ -4,4 +4,4 @@ from __future__ import annotations
 
 
 class CookieError(ValueError):
-    """Raised when a Set-Cookie line has no usable name and value pair."""
+    """A Set-Cookie line a user agent ignores, breaks the grammar, or cannot be built safely."""
