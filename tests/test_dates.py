@@ -83,8 +83,8 @@ def test_format_http_date_writes_an_imf_fixdate_in_gmt() -> None:
 
 def test_parse_fixdate_is_exact() -> None:
     assert parse_fixdate("Sun, 06 Nov 1994 08:49:37 GMT") == utc(1994, 11, 6, 8, 49, 37)
+    assert parse_fixdate("Mon, 06 Nov 1994 08:49:37 GMT") == utc(1994, 11, 6, 8, 49, 37)
     for text in (
-        "Mon, 06 Nov 1994 08:49:37 GMT",
         "sun, 06 Nov 1994 08:49:37 GMT",
         "Sun, 6 Nov 1994 08:49:37 GMT",
         "Sun, 06 Nov 1994 08:49:37 UTC",

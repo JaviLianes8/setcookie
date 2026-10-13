@@ -8,9 +8,9 @@ Progress:
 - [x] Strict mode: the server grammar of section 4.1.1 with reasons
 - [x] Safe builder: token names, cookie-octet values, attribute guards, prefix, SameSite=None and Partitioned rules, `expire`
 - [x] Storage model: `receive` with default-path, domain and path matching, secure origin, prefixes, 400 day cap
-- [ ] Command line
+- [x] Command line
 - [ ] Contracts: pinned sources, web-platform-tests corpus, README examples, installed wheel
-- [ ] Docs and packaging: README, CHANGELOG, metadata, sdist contents
+- [x] Docs and packaging: README, CHANGELOG, metadata, sdist contents
 - [ ] Gates: ruff format, ruff check, mypy --strict, pytest
 - [ ] Mutation run: removing guarded logic makes the suite fail
 - [ ] Independent review findings fixed with regression tests

@@ -4,24 +4,38 @@ build-backend = "hatchling.build"
 
 [project]
 name = "setcookie"
-version = "0.1.0"
-description = "Typed single-line Set-Cookie codec: parse and build one Set-Cookie header per RFC 6265"
+version = "0.2.0"
+description = "Parse, validate and safely build HTTP Set-Cookie headers, typed and zero-dependency, per RFC 6265bis"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Javier Lianes", email = "javier@lianes8studio.com" }]
-keywords = []
+keywords = ["cookie", "set-cookie", "http", "headers", "rfc6265", "rfc6265bis", "samesite", "partitioned", "chips"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Session",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
 dependencies = []
 
 [project.optional-dependencies]
 dev = ["ruff", "mypy", "pytest", "build", "twine"]
+
+[project.scripts]
+setcookie = "setcookie._cli:main"
 
 [project.urls]
 Homepage = "https://lianes8studio.com"
@@ -33,6 +47,15 @@ Funding = "https://buymeacoffee.com/jlianesglrs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/setcookie"]
+
+[tool.hatch.build.targets.sdist]
+# Third-party reference files are fetched locally and never shipped; only their manifest is.
+exclude = [
+    ".github",
+    "IMPROVEMENTS-round*.md",
+    "tests/upstream/*.txt",
+    "tests/upstream/wpt",
+]
 
 [tool.ruff]
 line-length = 100

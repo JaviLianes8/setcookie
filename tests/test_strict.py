@@ -45,7 +45,7 @@ INVALID = [
     ("sid=abc;", "empty attribute"),
     ("sid=abc; ; Secure", "empty attribute"),
     ("sid=abc; Expires=Sun Nov  6 08:49:37 1994", "IMF-fixdate"),
-    ("sid=abc; Expires=Mon, 06 Nov 1994 08:49:37 GMT", "IMF-fixdate"),
+    ("sid=abc; Expires=Sun, 31 Nov 1994 08:49:37 GMT", "IMF-fixdate"),
     ("sid=abc; Max-Age=0", "non-zero-digit"),
     ("sid=abc; Max-Age=-1", "non-zero-digit"),
     ("sid=abc; Max-Age=01", "non-zero-digit"),

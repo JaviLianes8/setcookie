@@ -84,7 +84,11 @@ def parse_date(text: str) -> datetime | None:
 
 
 def parse_fixdate(text: str) -> datetime | None:
-    """Parse an exact IMF-fixdate (RFC 9110 section 5.6.7); None for anything else."""
+    """Parse an exact IMF-fixdate (RFC 9110 section 5.6.7); None for anything else.
+
+    Only the grammar and the calendar are checked, not that the day name fits the date:
+    the draft's own example in section 3.1 pairs "Wed" with 9 June 2026, a Tuesday.
+    """
     match = _FIXDATE.fullmatch(text)
     if match is None:
         return None
@@ -100,7 +104,7 @@ def parse_fixdate(text: str) -> datetime | None:
         )
     except ValueError:
         return None
-    return moment if _DAYS[moment.weekday()] == match[1] else None
+    return moment
 
 
 def format_http_date(value: datetime) -> str:
