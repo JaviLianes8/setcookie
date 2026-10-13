@@ -37,9 +37,9 @@ def test_parse_is_case_insensitive_on_attribute_names() -> None:
     assert (cookie.same_site, cookie.max_age) == ("Lax", 10)
 
 
-def test_attribute_names_fold_ascii_only() -> None:
-    # U+212A KELVIN SIGN lower-cases to "k" under Unicode rules; it must stay unknown.
-    assert parse("sid=a; Max-Ag\u212a=5").max_age is None
+def test_domain_lower_casing_is_ascii_only() -> None:
+    # U+212A KELVIN SIGN lower-cases to "k" under Unicode rules; it must stay as written.
+    assert parse("sid=a; Domain=\u212aX.com").domain == "\u212ax.com"
 
 
 def test_a_pair_without_equals_is_a_nameless_cookie() -> None:

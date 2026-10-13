@@ -61,6 +61,11 @@ def test_a_non_ascii_domain_attribute_is_rejected() -> None:
         get("sid=a; Domain=\u00e9xample.com")
 
 
+def test_a_domain_that_only_folds_to_ascii_is_rejected() -> None:
+    with pytest.raises(CookieError, match="not ASCII"):
+        get("sid=a; Domain=\u212a.com", "https://k.com/")
+
+
 def test_the_public_suffix_hook() -> None:
     def suffix(domain: str) -> bool:
         return domain in {"com", "example.com"}
@@ -135,7 +140,9 @@ def test_max_age_zero_or_below_expires_at_once() -> None:
     for line in ("sid=a; Max-Age=0", "sid=a; Max-Age=-5", "sid=a; Expires=Thu, 10 Apr 1980 0:0:0"):
         cookie = get(line)
         assert cookie.persistent and cookie.is_expired(NOW)
+    assert get("sid=a; Max-Age=0").expiry == datetime.min.replace(tzinfo=timezone.utc)
     assert not get("sid=a; Max-Age=1").is_expired(NOW)
+    assert get("sid=a; Max-Age=1").is_expired(NOW + timedelta(seconds=1))
     assert not get("sid=a").is_expired(NOW)
 
 

@@ -64,7 +64,8 @@ def test_build_rejects_values_outside_cookie_octet(value: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "domain", ["", ".example.com", "x.com; Secure", "x.com:443", "ex ample.com", "-x.com", "a..b"]
+    "domain",
+    ["", ".example.com", "x.com; Secure", "x.com:443", "ex ample.com", "-x.com", "x-.com", "a..b"],
 )
 def test_build_rejects_domains_that_are_not_host_names(domain: str) -> None:
     with pytest.raises(CookieError, match="host name"):
