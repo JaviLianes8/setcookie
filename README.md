@@ -52,7 +52,7 @@ for name, value, options in [
 Names must be HTTP tokens and values cookie-octets (encode arbitrary data, for example
 with Base64). `max_age` must be a positive int: the grammar has no `Max-Age=0`, so use
 `expire` to delete a cookie. `expires` is written as an IMF-fixdate in GMT whatever the
-locale or time zone of the datetime.
+locale or time zone of the datetime; a naive datetime is taken to be UTC, not local time.
 
 ## Parse a header
 
@@ -125,6 +125,8 @@ Expiry follows Max-Age over Expires and is capped at 400 days. Pass
 `is_public_suffix` to reject domains such as `co.uk`, and `cross_site=True` for a
 cross-site request that is not a top-level navigation. Rules that need the rest of the
 cookie store (overwriting, eviction, secure cookie shadowing) are left to the caller.
+Non-ASCII hosts are converted with the standard library's IDNA 2003 codec, which differs
+from IDNA 2008 for a few characters.
 
 ## Command line
 
@@ -133,10 +135,11 @@ $ curl -sI https://example.com | setcookie --strict
 $ setcookie --url https://www.example.com/app "sid=1; Domain=example.com"
 ```
 
-`setcookie` reads lines from its arguments or from stdin (from a header dump only the
-Set-Cookie fields are used) and prints JSON. `--strict` checks the server grammar,
-`--url` adds what a user agent would store, `--now` fixes the clock. The exit status is
-1 when any line is refused. `python -m setcookie` works too.
+`setcookie` reads lines from its arguments or from stdin (from a header dump, which starts
+with an `HTTP/` status line, only the Set-Cookie fields are used) and prints JSON.
+`--strict` checks the server grammar, `--url` adds what a user agent would store, `--now`
+fixes the clock. The exit status is 1 when any line is refused. `python -m setcookie`
+works too.
 
 ## API
 
@@ -157,7 +160,8 @@ Set-Cookie fields are used) and prints JSON. `--strict` checks the server gramma
 `http.cookies.SimpleCookie` was written for the old Cookie header, not for one
 Set-Cookie line: it keeps `Expires` as a string, accepts any `SameSite` value, reads an
 unknown attribute such as `Priority=High` as a second cookie, silently drops the whole
-line when it meets a flag it does not know (`Partitioned`), drops nameless cookies, and
+line when it meets a flag it does not know (`Foo`, and `Partitioned` before Python 3.14),
+drops nameless cookies, and
 writes a control character in a value as an octal escape that browsers do not decode.
 `setcookie` follows the current draft step by step, refuses to build what browsers would
 drop, and gives typed results.

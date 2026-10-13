@@ -21,13 +21,22 @@ class Request(NamedTuple):
 
 
 def request_of(url: str) -> Request:
-    """Split a request URL into its canonical host, path and whether it is secure."""
-    parts = urlsplit(url)
-    host = parts.hostname
+    """Split a request URL into its canonical host, path and whether it is secure.
+
+    Non-ASCII hosts go through the standard library's IDNA 2003 codec, which maps a few
+    characters (such as sharp s) differently from the IDNA 2008 rules of section 5.1.2.
+    """
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError as error:
+        raise CookieError(f"the request URL is malformed: {url!r}") from error
     if not host:
         raise CookieError(f"the request URL has no host: {url!r}")
     try:
         canonical = host.rstrip(".").encode("idna").decode("ascii").lower()
+        # A label that claims to be an A-label must decode (section 5.1.2 step 4).
+        canonical.encode("ascii").decode("idna")
     except UnicodeError:
         raise CookieError(f"the request host cannot be canonicalized: {host!r}") from None
     return Request(canonical, parts.path, parts.scheme.lower() in _SECURE_SCHEMES)

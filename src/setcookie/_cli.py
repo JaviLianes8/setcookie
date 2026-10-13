@@ -23,8 +23,12 @@ def _lines(args: Sequence[str], stdin: str) -> list[str]:
     if args:
         return list(args)
     raw = [line.rstrip("\r") for line in stdin.split("\n")]
+    present = [line for line in raw if line.strip()]
     headers = [match[1] for line in raw if (match := _HEADER.fullmatch(line))]
-    return headers if headers else [line for line in raw if line.strip()]
+    # A dump (curl -sI starts with a status line) yields only its Set-Cookie fields, maybe none.
+    if headers or (present and present[0].startswith("HTTP/")):
+        return headers
+    return present
 
 
 def _plain(value: object) -> Any:
@@ -52,8 +56,12 @@ def _report(line: str, options: argparse.Namespace) -> tuple[dict[str, Any], boo
 
 
 def _moment(text: str) -> datetime:
-    moment = datetime.fromisoformat(text)
+    # fromisoformat only reads a trailing "Z" from Python 3.11 on.
+    moment = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+_moment.__name__ = "ISO time"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

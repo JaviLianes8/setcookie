@@ -13,10 +13,12 @@ SameSite = Literal["Lax", "Strict", "None"]
 class Cookie:
     """One Set-Cookie line decomposed into its name, value and attributes.
 
-    When an attribute repeats, the last valid one wins, as in a user agent. ``path`` is
-    ``""`` when a Path attribute was given but was empty or relative, which tells the
-    user agent to use the default path. ``extensions`` keeps unrecognised attributes in
-    order as ``(name, value)``, with ``None`` for an attribute that had no ``=``.
+    When an attribute repeats, the last one wins as in a user agent: an unreadable Expires
+    or Max-Age is skipped, while an empty Domain or an unknown SameSite value resets the
+    earlier one. ``path`` is ``""`` when a Path attribute was given but was empty or
+    relative, which tells the user agent to use the default path. ``extensions`` keeps
+    unrecognised attributes in order as ``(name, value)``, with ``None`` for an attribute
+    that had no ``=``.
     """
 
     name: str

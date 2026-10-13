@@ -28,6 +28,7 @@ _KNOWN = frozenset(
     {"expires", "max-age", "domain", "path", "secure", "httponly", "samesite", "partitioned"}
 )
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_BIG = 10**MAX_ATTRIBUTE_OCTETS  # more digits than an attribute value may hold
 
 
 def build(
@@ -49,22 +50,25 @@ def build(
     Every part is checked on its own before it is joined, so no argument can end the
     line, start another attribute or inject a header. Prefix rules, the Secure
     requirement of SameSite=None and Partitioned, and the size limits are enforced.
+    A naive ``expires`` is taken to be UTC, not local time.
     """
     _check_pair(name, value)
     parts = [f"{name}={value}"]
     if expires is not None:
         parts.append(f"Expires={_expires(expires)}")
     if max_age is not None:
-        if isinstance(max_age, bool) or not isinstance(max_age, int) or max_age < 1:
-            _fail(f"max_age must be a positive int, got {max_age!r}; use expire() to delete")
+        if isinstance(max_age, bool) or not isinstance(max_age, int) or not 0 < max_age < _BIG:
+            _fail("max_age must be a positive int below 10**1024; use expire() to delete")
         parts.append(f"Max-Age={max_age}")
     if domain is not None:
-        if not is_hostname(domain):
+        if not isinstance(domain, str) or not is_hostname(domain):
             _fail(f"domain {domain!r} is not a host name (no leading dot, no port)")
         parts.append(f"Domain={domain}")
     if path is not None:
-        if path and not path.startswith("/"):
+        if not isinstance(path, str) or (path and not path.startswith("/")):
             _fail(f"path {path!r} must be empty or start with '/'")
+        if path != path.strip(WSP):
+            _fail(f"path {path!r} has leading or trailing whitespace")
         _check_attribute_value("path", path)
         parts.append(f"Path={path}")
     parts.extend(flag for flag, on in (("Secure", secure), ("HttpOnly", http_only)) if on)
@@ -74,7 +78,7 @@ def build(
         parts.append(f"SameSite={same_site}")
     if partitioned:
         parts.append("Partitioned")
-    parts.extend(_extension(key, text) for key, text in extensions)
+    parts.extend(_extension(item) for item in extensions)
     problem = prefix_problem(
         name, secure=secure, has_domain=domain is not None, path=path
     ) or secure_problem(same_site=same_site, partitioned=partitioned, secure=secure)
@@ -125,21 +129,33 @@ def _check_pair(name: str, value: str) -> None:
 def _expires(moment: datetime) -> str:
     if not isinstance(moment, datetime):
         _fail(f"expires must be a datetime, got {type(moment).__name__}")
-    text = format_http_date(moment)
+    try:
+        text = format_http_date(moment)
+    except OverflowError:
+        _fail("expires is outside the range of representable UTC dates")
     if int(text[12:16]) < 1601:
         _fail("expires before the year 1601 is ignored by user agents")
     return text
 
 
-def _extension(key: str, text: str | None) -> str:
-    if not key or key != key.strip(WSP) or "=" in key or not is_av_text(key):
+def _extension(item: tuple[str, str | None]) -> str:
+    if not isinstance(item, tuple) or len(item) != 2:
+        _fail(f"each extension must be a (name, value) tuple, got {item!r}")
+    key, text = item
+    if (
+        not isinstance(key, str)
+        or not key
+        or key != key.strip(WSP)
+        or "=" in key
+        or not is_av_text(key)
+    ):
         _fail(f"extension name {key!r} is not a valid attribute name")
     if ascii_lower(key) in _KNOWN:
         _fail(f"extension {key!r} would be read as a standard attribute; use its argument")
     if text is None:
         return key
-    if text != text.strip(WSP):
-        _fail(f"extension value {text!r} has leading or trailing whitespace")
+    if not isinstance(text, str) or text != text.strip(WSP):
+        _fail(f"extension value {text!r} must be a str without outer whitespace")
     _check_attribute_value(key, text)
     return f"{key}={text}"
 
