@@ -43,7 +43,7 @@ now = datetime(2026, 10, 13, tzinfo=timezone.utc)
 line = "a=1; Domain=example.com; Max-Age=999999999"
 stored = receive(line, "https://www.example.com/x/y", now=now)
 assert isinstance(stored, StoredCookie) and stored.path == "/x" and not stored.host_only
-assert stored.matches("https://shop.example.com/x/z") and not stored.matches("http://example.com/x")
+assert stored.matches("https://shop.example.com/x/z") and not stored.matches("https://example.org/x")
 assert (stored.expiry - now).days == 400
 for call in (
     lambda: build("sid", "a\r\nSet-Cookie: x=y"),
