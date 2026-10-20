@@ -159,8 +159,14 @@ def test_a_text_stdin_without_a_byte_buffer_is_read(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # An embedding host may swap sys.stdin for a plain text stream such as StringIO.
-    monkeypatch.setattr("sys.stdin", io.StringIO("a=1\n"))
+    monkeypatch.setattr("sys.stdin", io.StringIO("a=1\nb=2\n"))
     assert main([]) == 0
     out, err = capsys.readouterr()
     assert err == ""
-    assert [entry["cookie"]["name"] for entry in json.loads(out)] == ["a"]
+    assert [entry["cookie"]["name"] for entry in json.loads(out)] == ["a", "b"]
+    monkeypatch.setattr("sys.stdin", io.StringIO("a=1 \n"))
+    assert main(["--strict"]) == 1
+    out, err = capsys.readouterr()
+    report = json.loads(out)
+    assert report[0]["line"] == "a=1 " and "trailing whitespace" in report[0]["error"]
+    assert "setcookie: strict:" in err

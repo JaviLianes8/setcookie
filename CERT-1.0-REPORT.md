@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 3: all findings fixed (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 4: all findings fixed (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -337,3 +337,30 @@ Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict
 `mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
 PC (CPython 3.14, turn elena/11, clean clone of 2daf6e5, fetched sources absent): 533
 passed, 24 skipped.
+
+### Round 4
+
+Lens e ran again against 7797334. It confirmed every earlier finding fixed (E3-C15, C08,
+C09 now killed, the eight original mutants still killed) and the F5 dispute still valid,
+and ran 10 new probes on `_cli._stdin` and `_cli.main`: 7 were killed and 3 survived. No
+behaviour changed: the three survivors were missing contracts, so this round adds tests
+only and the CHANGELOG is unchanged.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| e | E4-S08: nothing pinned that stdin is read only when no line is given (`text = _stdin()` survived, so `setcookie a=1` would wait for EOF on an open stdin) | `test_cli_stdin::test_stdin_is_not_read_when_lines_are_given`: a stdin whose `read` fails, `main(["a=1"])` exits 0 with cookie `a`; `test_cli_stdin::test_the_command_does_not_wait_on_an_open_stdin_when_lines_are_given`: `python -m setcookie a=1` with a stdin pipe left open exits 0 within 60 s |
+| e | E4-S03: outer whitespace not pinned on the text stdin fallback (`read().strip()` survived) | `test_cli::test_a_text_stdin_without_a_byte_buffer_is_read` also feeds `StringIO("a=1 \n")` with `--strict`: exit 1, line `a=1 `, trailing whitespace error on stdout and stderr |
+| e | E4-S06: the text stdin fallback tested with one line only (`readline()` survived) | the same test now reads `StringIO("a=1\nb=2\n")` and asserts the cookie names `["a", "b"]` |
+
+Each mutant applied alone to the working tree, against `tests/test_cli.py` and
+`tests/test_cli_stdin.py` on CPython 3.13.2 (this PC, two test files), then reverted:
+
+| Mutant | Caught by |
+| --- | --- |
+| S08 `text = "" if options.lines else _stdin()` to `text = _stdin()` | test_cli_stdin::test_stdin_is_not_read_when_lines_are_given (AssertionError from the stdin read); test_cli_stdin::test_the_command_does_not_wait_on_an_open_stdin_when_lines_are_given (timeout) |
+| S03 fallback `return sys.stdin.read()` to `return sys.stdin.read().strip()` | test_cli::test_a_text_stdin_without_a_byte_buffer_is_read |
+| S06 fallback `return sys.stdin.read()` to `return sys.stdin.readline()` | test_cli::test_a_text_stdin_without_a_byte_buffer_is_read |
+
+Disputed findings: none.
+
+Fix commit: the commit that adds this section, on top of 7797334.
