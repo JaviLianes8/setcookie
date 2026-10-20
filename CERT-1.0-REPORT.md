@@ -458,3 +458,9 @@ Disputed findings:
   would make `receive` reject URLs a browser sends cookies to.
 
 Fix commit: the commit that adds this section, on top of 9e88df0.
+
+Gates at the fix commit 8fa92b2: `ruff format --check .`, `ruff check .`, `mypy --strict src`
+and `mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on
+Elena's PC (CPython 3.14.2, turn elena/5, low priority, clean clone of 8fa92b2, fetched
+sources absent, so their tests and the opt-in e2e test skip): 731 tests, 708 passed,
+23 skipped, none failed.
