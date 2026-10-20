@@ -15,3 +15,4 @@ Invoke-Step "mypy"        { mypy --strict src tests }
 Invoke-Step "pytest"      { pytest }
 Write-Host "gate green"
 Write-Host "Reference files: python scripts/fetch_upstream.py; wheel test: SETCOOKIE_E2E=1 pytest tests/test_e2e_wheel.py"
+Write-Host "Reference implementations: npm install --prefix tests/upstream/oracle --save-exact undici@8.12.3 tough-cookie@6.0.2"
