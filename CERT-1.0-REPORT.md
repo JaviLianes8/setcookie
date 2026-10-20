@@ -364,3 +364,8 @@ Each mutant applied alone to the working tree, against `tests/test_cli.py` and
 Disputed findings: none.
 
 Fix commit: the commit that adds this section, on top of 7797334.
+
+Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
+PC (CPython 3.14, turn elena/10, clean clone of 72ebcdf, fetched sources absent, so their
+tests and the opt-in e2e test skip): 560 tests collected, none failed.
