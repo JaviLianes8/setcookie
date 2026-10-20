@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 4: all findings fixed (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 5: all findings fixed (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -369,3 +369,37 @@ Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict
 `mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
 PC (CPython 3.14, turn elena/10, clean clone of 72ebcdf, fetched sources absent, so their
 tests and the opt-in e2e test skip): 560 tests collected, none failed.
+
+### Round 5
+
+Lens e ran again against 85d1d2a. It confirmed the round 4 findings (E4-S08, S03, S06)
+killed, the 11 earlier mutants still killed and the F5 dispute still valid, and ran 10 new
+probes on `_cli._stdin` and `_cli.main`: 7 were killed and 3 survived. It also found that
+one subprocess test ran whatever setcookie was installed instead of the tree under test.
+No behaviour changed: this round adds and corrects tests only and the CHANGELOG is
+unchanged.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| e | E5-P10: the last byte of a byte stdin without a final newline not pinned (`buffer.read()[:-1]` survived) | `test_cli_stdin::test_the_last_byte_of_stdin_is_kept_without_a_final_newline`: `python -m setcookie` fed `b"a=1"` (no newline) exits 0 with cookie `a`, value `1` |
+| e | E5-P02: the same gap on the text stdin fallback (`sys.stdin.read()[:-1]` survived) | `test_cli::test_a_text_stdin_without_a_byte_buffer_is_read` also reads `StringIO("a=1")` and asserts the value `1` |
+| e | E5-P08: the newline after the JSON output not pinned (deleting `sys.stdout.write("\n")` survived) | `test_cli_stdin::test_the_json_output_ends_with_a_newline`: `python -m setcookie a=1` exits 0 and its stdout ends with a newline right after `]` |
+| e | E5-T1: `test_the_command_does_not_wait_on_an_open_stdin_when_lines_are_given` started the child without `PYTHONPATH`, so it imported the installed setcookie | every child in `tests/test_cli_stdin.py` now gets `PYTHONPATH` set to the directory holding the `setcookie` under test, as `test_cli.py` already did; mutant S08 now fails this test too |
+
+Each mutant applied alone to the working tree with bytecode off, against
+`tests/test_cli.py` and `tests/test_cli_stdin.py` on CPython 3.13.2 (this PC, two test
+files), then reverted:
+
+| Mutant | Caught by |
+| --- | --- |
+| P10 `data: bytes = buffer.read()` to `buffer.read()[:-1]` | test_cli_stdin::test_the_last_byte_of_stdin_is_kept_without_a_final_newline |
+| P02 fallback `return sys.stdin.read()` to `return sys.stdin.read()[:-1]` | test_cli::test_a_text_stdin_without_a_byte_buffer_is_read |
+| P08 `sys.stdout.write("\n")` in `main` deleted | test_cli_stdin::test_the_json_output_ends_with_a_newline |
+| S08 `text = "" if options.lines else _stdin()` to `text = _stdin()` | test_cli_stdin::test_stdin_is_not_read_when_lines_are_given; test_cli_stdin::test_the_command_does_not_wait_on_an_open_stdin_when_lines_are_given (now runs the tree under test) |
+
+Disputed findings: none.
+
+Fix commit: the commit that adds this section, on top of 85d1d2a.
+
+Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest`: GATES_PENDING.

@@ -170,3 +170,7 @@ def test_a_text_stdin_without_a_byte_buffer_is_read(
     report = json.loads(out)
     assert report[0]["line"] == "a=1 " and "trailing whitespace" in report[0]["error"]
     assert "setcookie: strict:" in err
+    # The last character is kept when the text has no final newline.
+    monkeypatch.setattr("sys.stdin", io.StringIO("a=1"))
+    assert main([]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["cookie"]["value"] == "1"
