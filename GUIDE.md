@@ -140,15 +140,15 @@ characters, so a message is safe to log.
 ## Command line
 
 `setcookie [--strict] [--url URL] [--now ISO] [LINE ...]` reads the lines given, or
-stdin. Stdin is read as UTF-8 whatever the locale (a byte order mark is skipped, other
-bytes are kept as escapes). It is a header dump when its first non-empty line starts
-with `HTTP/` or any line is a `Set-Cookie:` field; then only the Set-Cookie fields are
-read, every other line is ignored, and a dump without any prints `[]` and exits 0. It
-prints a JSON array with one entry per line: `line`, then
-`cookie` (the fields of `Cookie`), `stored` with `--url` (the fields of `StoredCookie`)
-or `error`. Dates are ISO 8601. The exit status is 0 when every line was read, 1 when any
-was refused, 2 for a usage error, such as no line given and nothing on stdin. `--now` defaults to the clock and a time without a zone
-is UTC.
+stdin. Stdin is read as UTF-8 whatever the locale: a byte order mark is skipped, and a
+byte that is not UTF-8 is kept as an escape (byte 0xFF becomes `\udcff` in the JSON).
+It is a header dump when its first non-empty line starts with `HTTP/` or any line is a
+`Set-Cookie:` field; then only the Set-Cookie fields are read, every other line is
+ignored, and a dump without any prints `[]` and exits 0. It prints a JSON array with one
+entry per line: `line`, then `cookie` (the fields of `Cookie`), `stored` with `--url`
+(the fields of `StoredCookie`) or `error`. Dates are ISO 8601. The exit status is 0 when
+every line was read, 1 when any was refused, 2 for a usage error, such as no line given
+and nothing on stdin (empty or closed). `--now` defaults to the clock and a time without a zone is UTC.
 
 ## Moving from 0.2.0
 

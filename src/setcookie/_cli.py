@@ -37,6 +37,8 @@ def _lines(args: Sequence[str], stdin: str) -> list[str]:
 
 def _stdin() -> str:
     # Header octets do not depend on the locale: read bytes, as UTF-8, keeping any others.
+    if sys.stdin is None:  # descriptor 0 closed: no input, so main reports the usage error
+        return ""
     buffer = getattr(sys.stdin, "buffer", None)
     if buffer is None:
         return sys.stdin.read()

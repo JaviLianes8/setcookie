@@ -45,7 +45,8 @@ Every change against 0.2.0 is listed here; the
   instead of as local time.
 - The command line reads stdin as UTF-8 (a byte order mark skipped, undecodable bytes
   kept as escapes) instead of the locale encoding, and a header dump without any
-  Set-Cookie field prints `[]` and exits 0 instead of failing with a usage error.
+  Set-Cookie field prints `[]` and exits 0 instead of failing with a usage error. A
+  closed stdin is the same usage error (exit 2) instead of an `AttributeError` traceback.
 - `scripts/release.ps1` checks that the version in `pyproject.toml` is not on PyPI yet,
   instead of refusing any name that already exists there.
 - `Cookie`, `StoredCookie` and `CookieError` report `setcookie` as their module, so

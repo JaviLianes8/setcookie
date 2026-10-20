@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import subprocess
+import sys
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 
+import setcookie
 from setcookie._cli import main
 
 Result = tuple[int, Any, str]
@@ -107,6 +111,23 @@ def test_stdin_is_decoded_as_utf_8_whatever_the_locale(run: Callable[..., Result
 def test_bytes_that_are_not_utf_8_do_not_crash(run: Callable[..., Result]) -> None:
     code, report, _ = run([], b"sid=a\xffb\n")
     assert code == 0 and isinstance(report, list) and report[0]["cookie"]["name"] == "sid"
+    assert report[0]["cookie"]["value"] == "a\udcffb"
+
+
+def _closed_stdin_run(command: list[str], **options: Any) -> None:
+    # The child imports the same setcookie as these tests, installed or from src.
+    env = {**os.environ, "PYTHONPATH": os.path.dirname(os.path.dirname(setcookie.__file__))}
+    done = subprocess.run(command, capture_output=True, text=True, check=False, env=env, **options)
+    assert done.returncode == 2, done.stderr
+    assert "no Set-Cookie line given" in done.stderr and "Traceback" not in done.stderr
+
+
+def test_closed_stdin_is_a_usage_error_not_a_crash() -> None:
+    # Python sets sys.stdin to None when descriptor 0 is closed (`setcookie <&-`).
+    code = "import sys; sys.stdin = None; from setcookie._cli import main; sys.exit(main([]))"
+    _closed_stdin_run([sys.executable, "-c", code])
+    if sys.platform != "win32":
+        _closed_stdin_run([sys.executable, "-m", "setcookie"], preexec_fn=lambda: os.close(0))
 
 
 def test_now_keeps_its_offset(run: Callable[..., Result]) -> None:

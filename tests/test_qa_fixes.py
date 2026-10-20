@@ -39,7 +39,17 @@ def test_a_host_of_only_a_dot_cannot_be_canonicalized() -> None:
 
 
 @pytest.mark.parametrize(
-    "host", ["127.1", "0x7f.0.0.1", "0x7F.1", "2130706433", "0177.0.0.1", "127.0.0.1.", "127.0.1"]
+    "host",
+    [
+        "127.1",
+        "0x7f.0.0.1",
+        "0x7F.1",
+        "2130706433",
+        "0177.0.0.1",
+        "127.0.0.1.",
+        "127.0.1",
+        "127.0.0.0x1",
+    ],
 )
 def test_ipv4_shorthand_hosts_are_read_as_the_address(host: str) -> None:
     stored = receive("a=1", f"http://{host}/x/y", now=NOW)
@@ -50,16 +60,40 @@ def test_ipv4_shorthand_hosts_are_read_as_the_address(host: str) -> None:
         receive("a=1; Domain=1", f"http://{host}/", now=NOW)
 
 
-@pytest.mark.parametrize("host", ["1.2.3.4.5", "256.0.0.1", "1.2.3.256", "1.16777216", "a.09"])
+@pytest.mark.parametrize(
+    "host",
+    [
+        "1.2.3.4.5",
+        "256.0.0.1",
+        "1.2.3.256",
+        "1.16777216",
+        "a.09",
+        "1.256.0.1",
+        "1.2.256.3",
+        "1.2.3.4.0",
+        "a.1",
+        "x.y.127",
+        "x.0x1",
+        "1.09",
+        "09",
+    ],
+)
 def test_a_host_that_ends_in_a_bad_number_is_refused(host: str) -> None:
     with pytest.raises(CookieError, match="canonicalized"):
         receive("a=1", f"http://{host}/", now=NOW)
+
+
+@pytest.mark.parametrize("host", ["0x", "0x.0x.0x.0x"])
+def test_a_bare_hex_prefix_is_the_number_zero(host: str) -> None:
+    assert receive("a=1", f"http://{host}/", now=NOW).domain == "0.0.0.0"
 
 
 def test_names_with_digits_that_are_not_numbers_stay_host_names() -> None:
     assert receive("a=1", "http://a1.example/", now=NOW).domain == "a1.example"
     assert receive("a=1", "http://1.example/", now=NOW).domain == "1.example"
     assert receive("a=1", "http://x.0xg/", now=NOW).domain == "x.0xg"
+    assert receive("a=1", "http://x.1a/", now=NOW).domain == "x.1a"
+    assert receive("a=1", "http://example.1e/", now=NOW).domain == "example.1e"
     assert receive("a=1", "http://[::ffff:1.2.3.4]/", now=NOW).domain == "::ffff:1.2.3.4"
 
 

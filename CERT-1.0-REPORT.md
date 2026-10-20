@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | round 1: all findings fixed (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 and 2: all findings fixed (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -261,3 +261,48 @@ E2E at 4fd7ae1 (fresh clone from GitHub, this PC on turn pc/3, CPython 3.13.2, f
 sources present, `SETCOOKIE_E2E=1` and `SETCOOKIE_E2E_PYPI=1`): 540 passed, 4 skipped
 (the Node.js reference tests, no Node.js in that venv); the wheel, sdist, upgrade from
 PyPI 0.2.0 and the CLI by subprocess all pass with the round 1 fixes.
+
+### Round 2
+
+Lenses d and e ran again against 09db9e8 (lenses a, b and c are re-checked separately).
+Lens d confirmed its three round 1 findings fixed (wheel and sdist on CPython 3.10.19,
+3.11.5, 3.12.12, 3.13.2, 3.14.2 and 3.14.2t, upgrade from PyPI 0.2.0, a 68 check sweep)
+and found one new defect. Lens e confirmed its ten round 1 findings closed (F5 accepted as
+a design change) and found eight surviving mutants in the code changed since 23471a2.
+Every finding is fixed; the defect with a contract that failed on 09db9e8 first.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| d | N1: with stdin closed (`setcookie <&-`) `sys.stdin` is `None` and the CLI died with an `AttributeError` traceback and exit 1 | `_stdin` returns no input for a closed stdin, so the CLI reports the usage error and exits 2; `test_cli::test_closed_stdin_is_a_usage_error_not_a_crash` runs it by subprocess (and with descriptor 0 really closed off Windows); CHANGELOG, GUIDE and README say so |
+| e | G1 (N30): a middle IPv4 part above 255 not pinned | `1.256.0.1` and `1.2.256.3` added to the refused hosts |
+| e | G2 (N29): the four part limit not pinned apart from the last part range | `1.2.3.4.0` added to the refused hosts |
+| e | G3 (N33): a label that is not a number, in a host that ends in a number, not pinned | `a.1` and `x.y.127` added to the refused hosts |
+| e | G4 (N34): a hex last label not pinned | `127.0.0.0x1` added to the shorthand table, `x.0x1` to the refused hosts |
+| e | G5 (N25): a decimal label with hex letters not pinned as a host name | `x.1a` and `example.1e` added to the names that stay host names |
+| e | G6 (N23): an octal label with a non-octal digit not pinned | `1.09` and `09` added to the refused hosts |
+| e | G7 (N24): a bare `0x` part read as 0 not pinned | `test_a_bare_hex_prefix_is_the_number_zero` (`0x` and `0x.0x.0x.0x` are `0.0.0.0`) |
+| e | G8 (N13): undecodable stdin bytes kept as escapes not pinned | `test_cli::test_bytes_that_are_not_utf_8_do_not_crash` asserts the value `a\udcffb`; GUIDE shows the escape |
+
+Each mutant applied alone, `__pycache__` removed and bytecode off, against
+`tests/test_qa_fixes.py` and `tests/test_cli.py` on CPython 3.14 (laptop, turn portatil/3):
+
+| Mutant | Caught by |
+| --- | --- |
+| N30 `number > 255` to `> 256` | test_qa_fixes::test_a_host_that_ends_in_a_bad_number_is_refused[1.256.0.1] |
+| N29 `len(numbers) > 4` to `> 5` | test_qa_fixes::test_a_host_that_ends_in_a_bad_number_is_refused[1.2.3.4.0] |
+| N33 `None in numbers` removed | test_qa_fixes::test_a_host_that_ends_in_a_bad_number_is_refused[a.1] |
+| N34 hex last label not read as a number | test_qa_fixes::test_ipv4_shorthand_hosts_are_read_as_the_address[127.0.0.0x1] |
+| N25 decimal digits take the hex alphabet | test_qa_fixes::test_names_with_digits_that_are_not_numbers_stay_host_names |
+| N23 octal only from three characters | test_qa_fixes::test_a_host_that_ends_in_a_bad_number_is_refused[1.09] |
+| N24 bare `0x` is not a number | test_qa_fixes::test_a_bare_hex_prefix_is_the_number_zero[0x] |
+| N13 stdin decoded with `replace` | test_cli::test_bytes_that_are_not_utf_8_do_not_crash |
+| N1 closed stdin read again | test_cli::test_closed_stdin_is_a_usage_error_not_a_crash |
+
+Disputed findings: none.
+
+Fix commit: the commit that adds this section, on top of 09db9e8.
+
+Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
+PC (CPython 3.14, turn elena/8, fetched sources present): 555 passed, 1 skipped (the
+opt-in e2e test).

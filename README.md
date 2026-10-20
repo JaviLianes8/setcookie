@@ -147,7 +147,7 @@ a `Set-Cookie:` field (as `grep -i set-cookie` prints them); then only the Set-C
 fields are read, every other line is ignored, and a dump without one prints `[]`.
 `--strict` checks the server grammar, `--url` adds what a user agent would store, `--now`
 fixes the clock. The exit status is 1 when any line is refused and 2 when there is no
-input at all. `python -m setcookie` works too.
+input at all (stdin empty or closed). `python -m setcookie` works too.
 
 ## API
 
