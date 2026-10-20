@@ -1,6 +1,7 @@
 """Build the wheel, install it in a throwaway venv and drive the installed package.
 
-Slow and needs the build backend, so it runs only with SETCOOKIE_E2E=1.
+Slow and needs the build backend, so it runs only with SETCOOKIE_E2E=1. With
+SETCOOKIE_E2E_PYPI=1 as well, the release on PyPI is installed first and upgraded in place.
 """
 
 from __future__ import annotations
@@ -78,11 +79,14 @@ def test_installed_wheel_end_to_end(tmp_path: Path) -> None:
     (sdist,) = dist.glob("setcookie-*.tar.gz")
     names = zipfile.ZipFile(wheel).namelist()
     assert "setcookie/py.typed" in names and "setcookie/__main__.py" in names
+    assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
     assert not any(name.startswith(("tests/", "scripts/")) for name in names)
     entry_points = next(name for name in names if name.endswith("entry_points.txt"))
     assert "setcookie = setcookie._cli:main" in zipfile.ZipFile(wheel).read(entry_points).decode()
     listing = _run(sys.executable, "-m", "tarfile", "-l", sdist).stdout.decode()
     assert "IMPROVEMENTS-round" not in listing and "upstream/wpt" not in listing
+    assert "CERT-1.0" not in listing and "node_modules" not in listing
+    assert "GUIDE.md" in listing and "LICENSE" in listing and "scripts/js_oracle.cjs" in listing
     assert "tests/upstream/MANIFEST.json" in listing
     assert ".txt" not in listing.replace("requirements-dev.txt", "")
     assert "tests/test_wpt.py" in listing and "scripts/fetch_upstream.py" in listing
@@ -91,6 +95,8 @@ def test_installed_wheel_end_to_end(tmp_path: Path) -> None:
     venv.create(env_dir, with_pip=True)
     bindir = env_dir / ("Scripts" if sys.platform == "win32" else "bin")
     python = bindir / "python"
+    if os.environ.get("SETCOOKIE_E2E_PYPI") == "1":
+        _upgrade_from_pypi(python, tmp_path)
     installed = _run(python, "-m", "pip", "install", "-q", wheel)
     assert installed.returncode == 0, installed.stderr
 
@@ -113,3 +119,25 @@ def test_installed_wheel_end_to_end(tmp_path: Path) -> None:
         assert [entry["stored"]["name"] for entry in report] == ["a", "b"]
         failed = _run(*command, "--strict", "sid=a b", cwd=work)
         assert failed.returncode == 1 and b"cookie-octet" in failed.stderr
+
+
+OLD_PROGRAM = r"""
+import importlib.metadata
+from setcookie import CookieError, build, parse
+assert importlib.metadata.version("setcookie") == "0.2.0"
+assert build("sid", "abc", secure=True) == "sid=abc; Path=/; Secure"
+try:
+    build(1, "x")
+except CookieError:
+    print("0.2.0 ok")
+"""
+
+
+def _upgrade_from_pypi(python: Path, tmp_path: Path) -> None:
+    """Install 0.2.0 from PyPI and check it, so the wheel below upgrades it in place."""
+    old = _run(python, "-m", "pip", "install", "-q", "--no-cache-dir", "setcookie==0.2.0")
+    assert old.returncode == 0, old.stderr
+    work = tmp_path / "old"
+    work.mkdir()
+    result = _run(python, "-I", "-c", OLD_PROGRAM, cwd=work)
+    assert result.stdout.decode().strip() == "0.2.0 ok", result.stderr
