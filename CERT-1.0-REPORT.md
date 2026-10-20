@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 and 2: all findings fixed (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 3: all findings fixed (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -306,3 +306,32 @@ Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict
 `mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
 PC (CPython 3.14, turn elena/8, fetched sources present): 555 passed, 1 skipped (the
 opt-in e2e test).
+
+### Round 3
+
+Lens e ran again against 0797282. It confirmed the eight round 2 findings (G1 to G8) killed
+on CPython 3.14.2 and the F5 dispute still valid, and ran 15 new mutants on `_cli._stdin`
+and its caller, the only source change since 09db9e8: 12 were killed and 3 survived. No
+behaviour changed: the three survivors were missing contracts, so this round adds tests
+only and the CHANGELOG is unchanged.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| e | E3-C15: whitespace at the start and end of stdin not pinned (`_stdin().strip()` survived) | `test_cli::test_stdin_lines_keep_their_outer_whitespace`: `a=1 ` with `--strict` exits 1 with the trailing whitespace error and echoes the line as given; `  a=1` keeps its leading spaces in `line` |
+| e | E3-C08-C09: the fallback for a text stdin without `.buffer` never exercised | `test_cli::test_a_text_stdin_without_a_byte_buffer_is_read`: a `StringIO` stdin is read, exit 0 and cookie `a`; the fallback stays, since a host program may replace `sys.stdin` with a plain text stream |
+
+Each mutant applied alone to a copy of the repository, `__pycache__` removed and bytecode
+off, against `tests/test_cli.py` on CPython 3.13.2 (this PC, one test file):
+
+| Mutant | Caught by |
+| --- | --- |
+| C15 `_stdin()` to `_stdin().strip()` in `main` | test_cli::test_stdin_lines_keep_their_outer_whitespace |
+| C08 `getattr(sys.stdin, "buffer", None)` to `sys.stdin.buffer` | test_cli::test_a_text_stdin_without_a_byte_buffer_is_read (AttributeError) |
+| C09 fallback `return sys.stdin.read()` to `return ""` | test_cli::test_a_text_stdin_without_a_byte_buffer_is_read (usage error) |
+
+Disputed findings: none.
+
+Fix commit: the commit that adds this section, on top of 0797282.
+
+Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` result below.

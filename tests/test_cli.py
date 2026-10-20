@@ -143,3 +143,24 @@ def test_a_host_the_codec_cannot_decode_is_reported_not_raised(
     code, report, err = run(["--url", "https://xn--99999999999999999999a/", "sid=1"])
     assert code == 1 and isinstance(report, list)
     assert "canonicalized" in report[0]["error"] and "canonicalized" in err
+
+
+def test_stdin_lines_keep_their_outer_whitespace(run: Callable[..., Result]) -> None:
+    code, report, err = run(["--strict"], "a=1 \n")
+    assert code == 1 and isinstance(report, list)
+    assert report[0]["line"] == "a=1 " and "trailing whitespace" in report[0]["error"]
+    assert "setcookie: strict:" in err
+    code, report, _ = run([], "  a=1\n")
+    assert code == 0 and isinstance(report, list)
+    assert report[0]["line"] == "  a=1" and report[0]["cookie"]["value"] == "1"
+
+
+def test_a_text_stdin_without_a_byte_buffer_is_read(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An embedding host may swap sys.stdin for a plain text stream such as StringIO.
+    monkeypatch.setattr("sys.stdin", io.StringIO("a=1\n"))
+    assert main([]) == 0
+    out, err = capsys.readouterr()
+    assert err == ""
+    assert [entry["cookie"]["name"] for entry in json.loads(out)] == ["a"]
