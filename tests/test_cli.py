@@ -16,8 +16,10 @@ Result = tuple[int, Any, str]
 def run(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> Callable[..., Result]:
-    def invoke(argv: list[str], stdin: str = "") -> Result:
-        monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
+    def invoke(argv: list[str], stdin: str | bytes = "") -> Result:
+        data = stdin.encode() if isinstance(stdin, str) else stdin
+        # A cp1252 text layer like a Windows console: the CLI must read the bytes beneath it.
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(data), encoding="cp1252"))
         code = main(argv)
         out, err = capsys.readouterr()
         return code, json.loads(out) if out else None, err
@@ -77,3 +79,46 @@ def test_no_input_is_a_usage_error(run: Callable[..., Result]) -> None:
     with pytest.raises(SystemExit) as caught:
         run([], "\n\n")
     assert caught.value.code == 2
+
+
+def test_a_header_dump_without_set_cookie_prints_an_empty_list(
+    run: Callable[..., Result],
+) -> None:
+    for dump in ("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n", "HTTP/2 204\n"):
+        code, report, err = run(["--strict"], dump)
+        assert (code, report, err) == (0, [], "")
+
+
+def test_set_cookie_fields_without_a_status_line_are_a_dump(run: Callable[..., Result]) -> None:
+    code, report, _ = run([], "a=1\nSet-Cookie: b=2\nset-cookie:c=3\n")
+    assert code == 0 and isinstance(report, list)
+    assert [entry["line"] for entry in report] == ["b=2", "c=3"]
+
+
+def test_stdin_is_decoded_as_utf_8_whatever_the_locale(run: Callable[..., Result]) -> None:
+    code, report, _ = run([], b"\xef\xbb\xbfsid=caf\xc3\xa9\n")
+    assert code == 0 and isinstance(report, list)
+    assert report[0]["cookie"]["name"] == "sid"
+    assert report[0]["cookie"]["value"] == "café"
+    code, report, err = run(["--strict"], b"sid=caf\xc3\xa9\n")
+    assert code == 1 and "U+00E9 at index 3" in err
+
+
+def test_bytes_that_are_not_utf_8_do_not_crash(run: Callable[..., Result]) -> None:
+    code, report, _ = run([], b"sid=a\xffb\n")
+    assert code == 0 and isinstance(report, list) and report[0]["cookie"]["name"] == "sid"
+
+
+def test_now_keeps_its_offset(run: Callable[..., Result]) -> None:
+    argv = ["--url", "https://h.example/", "--now", "2026-10-13T00:00:00+02:00", "a=b; Max-Age=60"]
+    code, report, _ = run(argv)
+    assert code == 0 and isinstance(report, list)
+    assert report[0]["stored"]["expiry"] == "2026-10-13T00:01:00+02:00"
+
+
+def test_a_host_the_codec_cannot_decode_is_reported_not_raised(
+    run: Callable[..., Result],
+) -> None:
+    code, report, err = run(["--url", "https://xn--99999999999999999999a/", "sid=1"])
+    assert code == 1 and isinstance(report, list)
+    assert "canonicalized" in report[0]["error"] and "canonicalized" in err

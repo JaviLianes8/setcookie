@@ -123,9 +123,10 @@ def parse_fixdate(text: str) -> datetime | None:
 def format_http_date(value: datetime) -> str:
     """Render a datetime as an IMF-fixdate in GMT, regardless of locale.
 
-    A naive datetime is taken to be UTC.
+    A naive datetime, including one whose tzinfo gives no offset, is taken to be UTC.
     """
-    moment = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    naive = value.utcoffset() is None
+    moment = value.replace(tzinfo=timezone.utc) if naive else value
     moment = moment.astimezone(timezone.utc)
     return (
         f"{_DAYS[moment.weekday()]}, "

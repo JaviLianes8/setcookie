@@ -1,15 +1,18 @@
 # Build and upload to PyPI. Run scripts/check.ps1 first.
-# The name must not already exist on PyPI; the token is read from a secret store, never git.
+# The version in pyproject.toml must not be on PyPI yet; the token is read from a secret store, never git.
 $ErrorActionPreference = "Stop"
 
+$version = (Select-String -Path pyproject.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+if (-not $version) { throw "No version found in pyproject.toml." }
+
 # Works on both Windows PowerShell 5.1 and pwsh 7 (generic catch, no PS7-only types).
-$taken = $true
+$published = $true
 try {
-    Invoke-WebRequest -UseBasicParsing "https://pypi.org/pypi/setcookie/json" | Out-Null
+    Invoke-WebRequest -UseBasicParsing "https://pypi.org/pypi/setcookie/$version/json" | Out-Null
 } catch {
-    if ($_.Exception.Response.StatusCode.value__ -eq 404) { $taken = $false } else { throw }
+    if ($_.Exception.Response.StatusCode.value__ -eq 404) { $published = $false } else { throw }
 }
-if ($taken) { throw "The name 'setcookie' already exists on PyPI. Choose another before publishing." }
+if ($published) { throw "setcookie $version is already on PyPI. Raise the version before publishing." }
 
 $token = $env:PYPI_TOKEN
 if (-not $token -and (Test-Path "C:\secrets\pypi-token.txt")) {

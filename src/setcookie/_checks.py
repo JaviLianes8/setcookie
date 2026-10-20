@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import NoReturn
+from typing import NoReturn, TypeVar, cast
 
 from ._chars import (
     AV_OCTET,
@@ -27,6 +27,16 @@ _KNOWN = frozenset(
     {"expires", "max-age", "domain", "path", "secure", "httponly", "samesite", "partitioned"}
 )
 _BIG = 10**MAX_ATTRIBUTE_OCTETS  # more digits than an attribute value may hold
+_T = TypeVar("_T")
+
+
+def exact(value: _T) -> _T:
+    """The plain str or int a subclass holds, so an Enum member or a __format__ cannot lie."""
+    if isinstance(value, str):
+        return cast(_T, str.__str__(value))
+    if isinstance(value, int) and not isinstance(value, bool):
+        return cast(_T, int.__int__(value))
+    return value
 
 
 def fail(reason: str) -> NoReturn:
@@ -102,7 +112,7 @@ def check_same_site(same_site: object) -> None:
 def extension_text(item: object) -> str:
     if not isinstance(item, tuple) or len(item) != 2:
         raise type_error("each extension", "a (name, value) tuple", item)
-    key, text = item
+    key, text = exact(item[0]), exact(item[1])
     if not isinstance(key, str):
         raise type_error("an extension name", "a str", key)
     if not isinstance(text, (str, type(None))):

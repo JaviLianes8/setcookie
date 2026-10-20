@@ -56,7 +56,9 @@ not read: the result is an aware datetime in UTC.
 
 `build(name, value, *, expires, max_age, domain, path="/", secure, http_only, same_site,
 partitioned, extensions)` returns one line that `parse(..., strict=True)` reads back to
-the same values. It writes the attributes in this order: Expires, Max-Age, Domain, Path,
+the same values, with two exceptions: the Domain reads back lower-cased, and Expires is
+written to the whole second, so microseconds are dropped. A `str` or `int` subclass,
+such as an Enum member, is written as the plain value it holds. It writes the attributes in this order: Expires, Max-Age, Domain, Path,
 Secure, HttpOnly, SameSite, Partitioned, then the extensions.
 
 It raises `CookieError` when:
@@ -66,7 +68,8 @@ It raises `CookieError` when:
 - the name and value exceed 4096 octets, or an attribute value exceeds 1024;
 - `max_age` is not between 1 and 10**1024 - 1 (the grammar has no `Max-Age=0`: use
   `expire` to delete a cookie);
-- `expires` is before 1601 or cannot be converted to UTC; a naive datetime is UTC;
+- `expires` is before 1601 or cannot be converted to UTC; a naive datetime is UTC, and so
+  is one whose `tzinfo` gives no offset;
 - `domain` is not a host name: ASCII, at most 253 characters, no leading dot, no port,
   labels of 1 to 63 letters, digits or hyphens that do not start or end with a hyphen;
 - `path` is not empty and does not start with `/`, has outer whitespace, a control
@@ -106,6 +109,13 @@ earliest representable time; a cookie with neither is a session cookie
 (`persistent=False`, `expiry=None`). Non-ASCII hosts are converted with Python's IDNA
 2003 codec, which differs from IDNA 2008 for a few characters such as sharp s.
 
+The request host keeps a trailing dot, as browsers keep it: `www.example.com.` is a
+different host from `www.example.com`, a cookie of one is not sent to the other, and
+from the dotted host only a dotted Domain such as `example.com.` domain-matches. A host
+whose last label is a number is read as an IPv4 address the way the WHATWG URL parser
+reads it: `127.1`, `0x7f.0.0.1` and `2130706433` are all `127.0.0.1`, and a host such as
+`1.2.3.4.5` or `256.0.0.1` cannot be canonicalized and raises `CookieError`.
+
 The rules that need the rest of the cookie store (step 16, a non-secure cookie
 shadowing a secure one, and steps 23 and 24, replacing an old cookie and eviction) are
 left to the caller.
@@ -130,16 +140,20 @@ characters, so a message is safe to log.
 ## Command line
 
 `setcookie [--strict] [--url URL] [--now ISO] [LINE ...]` reads the lines given, or
-stdin. From a header dump (the first non-empty line starts with `HTTP/`) only the
-Set-Cookie fields are read. It prints a JSON array with one entry per line: `line`, then
+stdin. Stdin is read as UTF-8 whatever the locale (a byte order mark is skipped, other
+bytes are kept as escapes). It is a header dump when its first non-empty line starts
+with `HTTP/` or any line is a `Set-Cookie:` field; then only the Set-Cookie fields are
+read, every other line is ignored, and a dump without any prints `[]` and exits 0. It
+prints a JSON array with one entry per line: `line`, then
 `cookie` (the fields of `Cookie`), `stored` with `--url` (the fields of `StoredCookie`)
 or `error`. Dates are ISO 8601. The exit status is 0 when every line was read, 1 when any
-was refused, 2 for a usage error. `--now` defaults to the clock and a time without a zone
+was refused, 2 for a usage error, such as no line given and nothing on stdin. `--now` defaults to the clock and a time without a zone
 is UTC.
 
 ## Moving from 0.2.0
 
-Code that passes the documented types sees the same results. What changed:
+Code that passes the documented types sees the same results, except for the request
+hosts and command line input listed below. What changed:
 
 - Wrong argument types raise `TypeError` where 0.2.0 raised `CookieError`: catch
   `TypeError` as well, or fix the call. Flags such as `secure` must be real `bool`s, and
@@ -148,3 +162,9 @@ Code that passes the documented types sees the same results. What changed:
   quoting the value. Code that matched on the old text needs the new one.
 - `StoredCookie.is_expired` raises `ValueError` for a naive `now`.
 - `receive` no longer raises `OverflowError` near the end of the calendar.
+- A request host keeps its trailing dot (0.2.0 dropped it), and a host that ends in a
+  number is read as an IPv4 address (0.2.0 kept `127.1` as a name).
+- `build` writes the plain value of a `str` or `int` subclass, so an Enum member gives
+  its value instead of its name.
+- The command line reads stdin as UTF-8 instead of the locale encoding, and a header
+  dump without a Set-Cookie field prints `[]` and exits 0 instead of exiting 2.

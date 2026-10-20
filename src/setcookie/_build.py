@@ -13,6 +13,7 @@ from ._checks import (
     check_pair,
     check_path,
     check_same_site,
+    exact,
     expires_text,
     extension_text,
     fail,
@@ -42,7 +43,8 @@ def build(
     """Assemble one Set-Cookie line; raise CookieError for anything unsafe or ignored.
 
     Every part is checked on its own before it is joined, so no argument can end the
-    line, start another attribute or inject a header. Prefix rules, the Secure
+    line, start another attribute or inject a header; a ``str`` or ``int`` subclass, such
+    as an Enum member, is written as the plain value it holds. Prefix rules, the Secure
     requirement of SameSite=None and Partitioned, and the size limits are enforced.
     A naive ``expires`` is taken to be UTC, not local time. ``path=None`` leaves the
     Path attribute out. An argument of the wrong type raises TypeError.
@@ -56,6 +58,8 @@ def build(
     ...
     setcookie.CookieError: cookie value has U+000D at index 1, outside cookie-octet; encode it first
     """
+    name, value, domain, path = exact(name), exact(value), exact(domain), exact(path)
+    max_age, same_site = exact(max_age), exact(same_site)
     check_pair(name, value)
     check_flags(secure=secure, http_only=http_only, partitioned=partitioned)
     for label, text in (("domain", domain), ("path", path)):

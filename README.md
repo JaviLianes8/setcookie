@@ -130,20 +130,24 @@ Expiry follows Max-Age over Expires and is capped at 400 days. Pass
 cross-site request that is not a top-level navigation. Rules that need the rest of the
 cookie store (overwriting, eviction, secure cookie shadowing) are left to the caller.
 Non-ASCII hosts are converted with the standard library's IDNA 2003 codec, which differs
-from IDNA 2008 for a few characters.
+from IDNA 2008 for a few characters. As in browsers, a host with a trailing dot
+(`example.com.`) is a host of its own, and a host that ends in a number is read as an
+IPv4 address (`127.1` is `127.0.0.1`).
 
 ## Command line
 
 ```
-$ curl -sI https://example.com | setcookie --strict
+$ curl -sI https://github.com | setcookie --strict
 $ setcookie --url https://www.example.com/app "sid=1; Domain=example.com"
 ```
 
-`setcookie` reads lines from its arguments or from stdin (from a header dump, which starts
-with an `HTTP/` status line, only the Set-Cookie fields are used) and prints JSON.
+`setcookie` reads lines from its arguments or from stdin, as UTF-8, and prints JSON.
+Stdin is a header dump when its first non-empty line starts with `HTTP/` or any line is
+a `Set-Cookie:` field (as `grep -i set-cookie` prints them); then only the Set-Cookie
+fields are read, every other line is ignored, and a dump without one prints `[]`.
 `--strict` checks the server grammar, `--url` adds what a user agent would store, `--now`
-fixes the clock. The exit status is 1 when any line is refused. `python -m setcookie`
-works too.
+fixes the clock. The exit status is 1 when any line is refused and 2 when there is no
+input at all. `python -m setcookie` works too.
 
 ## API
 

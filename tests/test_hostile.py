@@ -38,9 +38,16 @@ def _seconds(call: Callable[[], object]) -> float:
 
 
 def _linear(make: Callable[[int], Callable[[], object]], size: int = 50000) -> None:
-    small, large = _seconds(make(size)), _seconds(make(size * 4))
-    # Four times the input may cost four times the time; allow noise, not a square.
-    assert large < max(small, 0.002) * 10, (small, large)
+    # Eight times the input costs eight times the time when linear and 64 when quadratic.
+    # The bound sits between the two, and a measurement spoiled by a busy machine is
+    # taken again, so load on other cores cannot fail a linear entry point.
+    timings = []
+    for _ in range(3):
+        small, large = _seconds(make(size)), _seconds(make(size * 8))
+        if large < max(small, 0.005) * 24:
+            return
+        timings.append((small, large))
+    raise AssertionError(f"grows faster than linear: {timings}")
 
 
 @pytest.mark.parametrize("shape", sorted(SHAPES))

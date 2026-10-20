@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | pending |
+| 19 | Five independent QA lenses | round 1: all findings fixed (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -205,3 +205,54 @@ the full suite run with `-x` and a 300 s per-test limit.
 At 619d73a on this PC, each command on its own: `ruff format --check .`,
 `ruff check .`, `mypy --strict src`, `mypy --strict src tests` and `pytest` (504 passed,
 1 skipped: the opt-in e2e test, which passed on the laptop) all exit 0.
+
+## QA lenses (item 19)
+
+### Round 1
+
+Five fresh lenses ran against 23471a2. None reported PASS outright; every finding is
+fixed below, each behaviour fix with a contract that failed on 23471a2 first
+(`tests/test_qa_fixes.py`, `tests/test_contract_pins.py`, `tests/test_cli.py`), and every
+behaviour change is in the CHANGELOG and the GUIDE.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| a | A1: the README example `curl -sI https://example.com \| setcookie --strict` exits 2, as example.com sets no cookie and an empty dump was a usage error | A dump without Set-Cookie prints `[]` and exits 0; exit 2 only when there is no input at all; README example uses github.com, which sets cookies (checked 2026-10-20) |
+| a | A2: dump detection in the code (any `Set-Cookie:` line) differs from the docs (status line only) | README and GUIDE describe both triggers and that other lines of a dump are ignored; pinned by `test_set_cookie_fields_without_a_status_line_are_a_dump` |
+| a | A3: GUIDE says `build` reads back to the same values, but Domain reads back lower-cased and Expires drops microseconds | GUIDE states both exceptions |
+| b | F1: the request host lost its trailing dot, unlike draft 22 and Chrome | The trailing dot is kept: `www.example.com.` is its own host, only a dotted Domain matches it, cookies are not sent across |
+| b | F2: IPv4 shorthand hosts (`127.1`, `0x7f.0.0.1`, `2130706433`) were domain names, so `Domain=1` was accepted from `127.1` | A host that ends in a number goes through the WHATWG IPv4 parser: it becomes the dotted address, or raises `CookieError` when it is not one (`1.2.3.4.5`, `256.0.0.1`, `a.09`) |
+| c | F1: `OverflowError` escaped `receive`, `matches` and the CLI for a huge punycode label on 3.13 and 3.14 | `OverflowError` and `ValueError` from the codec become the documented `CookieError`; tests for `receive`, `matches` and the CLI |
+| c | F2: `build` checked a `str` or `int` subclass but wrote it through its `__format__` (Enum names, attribute injection) | Every argument is turned into its exact `str` or `int` before it is checked and written |
+| c | F3: an `expires` whose `tzinfo` gives no offset was read as local time | `format_http_date` tests `utcoffset() is None`, so it is UTC like a naive datetime |
+| d | F1: same as A1 | Same fix |
+| d | F2: stdin was decoded with the locale encoding (cp1252 on Windows) | The CLI reads the bytes and decodes UTF-8 with the BOM skipped and other bytes kept as escapes |
+| d | F3: `scripts/release.ps1` refused any name already on PyPI, so it could never release 1.0.0 | It checks that the version in `pyproject.toml` is not on PyPI yet; the guard was run for 1.0.0 (passes) and 0.2.0 (refused) |
+| e | F1 to F9: ten surviving mutants (lone DQUOTE, `expire` Partitioned, strict SameSite=none spelling, prefix trailing dash, trailing-dot host, Max-Age clamp, 1601 boundary, CLI `--now` offset, build size guards) | Contracts added; each mutant re-applied alone and killed (table below) |
+| e | F10: the linearity test was flaky under load | It compares 8 times the input against a 24 times bound (quadratic would be 64) and measures again up to three times before failing; a quadratic stand-in still fails it |
+
+Mutants of lens e and of this round's fixes, each applied alone on CPython 3.13.2 here:
+
+| Mutant | Caught by |
+| --- | --- |
+| C06 a value of one `"` counts as quoted | test_contract_pins::test_a_lone_double_quote_is_not_a_quoted_value |
+| B10 `expire` drops Partitioned | test_contract_pins::test_expire_passes_every_flag_through |
+| S05 strict SameSite=None check case-sensitive | test_contract_pins::test_strict_same_site_none_needs_secure_in_any_case |
+| R04 `__host` and `__secure` without the dash | test_contract_pins::test_a_name_that_only_starts_like_a_prefix_has_no_prefix_rules |
+| H07 the trailing dot dropped again | test_qa_fixes::test_a_trailing_dot_keeps_the_request_host_distinct |
+| T07 Max-Age overflow returns `now` | test_contract_pins::test_max_age_past_the_end_of_the_calendar_clamps_to_the_latest_time |
+| B02 1601 refused | test_contract_pins::test_build_accepts_expires_from_the_first_day_of_1601 |
+| L05 CLI `--now` offset replaced by UTC | test_cli::test_now_keeps_its_offset |
+| B13 and B14 build size guards one octet late | test_contract_pins::test_build_size_limits_raise_its_own_messages_at_the_boundary |
+| codec `OverflowError` not caught | test_qa_fixes::test_a_punycode_label_too_large_to_decode_raises_cookie_error |
+| `max_age` and `same_site` not made exact | test_qa_fixes::test_build_writes_the_value_an_enum_member_holds |
+| floating `tzinfo` read as local | test_qa_fixes::test_build_takes_a_floating_tzinfo_as_utc_like_a_naive_datetime |
+| stdin decoded as cp1252 | test_cli::test_stdin_is_decoded_as_utf_8_whatever_the_locale |
+| empty dump a usage error | test_cli::test_a_header_dump_without_set_cookie_prints_an_empty_list |
+| IPv4 parser skipped | test_qa_fixes::test_ipv4_shorthand_hosts_are_read_as_the_address |
+
+Disputed findings: none.
+
+Gates at the fix commit on this PC (CPython 3.13.2): `ruff format --check .`,
+`ruff check .`, `mypy --strict src`, `mypy --strict src tests` and `pytest` (543 passed,
+1 skipped: the opt-in e2e test) exit 0.

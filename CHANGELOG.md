@@ -31,6 +31,23 @@ Every change against 0.2.0 is listed here; the
   for example `cookie value has U+000D at index 1, outside cookie-octet`.
 - `receive` returns the latest representable time as the expiry when `now` plus the
   lifetime does not fit a `datetime`, instead of raising `OverflowError`.
+- The request host keeps a trailing dot, as browsers do: `www.example.com.` is a host of
+  its own for `receive` and `StoredCookie.matches`, and only a dotted Domain matches it.
+  0.2.0 dropped the dot.
+- A request host whose last label is a number is read as an IPv4 address the way the
+  WHATWG URL parser reads it (`127.1`, `0x7f.0.0.1` and `2130706433` are `127.0.0.1`), so
+  the IP rules of domain-match apply; a host such as `1.2.3.4.5` raises `CookieError`.
+- A request host the IDNA codec cannot decode raises `CookieError` on every Python
+  version; on 3.13 and 3.14 a huge punycode label raised `OverflowError`.
+- `build` and `expire` write the plain value of a `str` or `int` subclass: an Enum
+  member gives its value, and a subclass with its own `__format__` cannot add text.
+- `build` takes an `expires` whose `tzinfo` gives no offset as UTC, like a naive one,
+  instead of as local time.
+- The command line reads stdin as UTF-8 (a byte order mark skipped, undecodable bytes
+  kept as escapes) instead of the locale encoding, and a header dump without any
+  Set-Cookie field prints `[]` and exits 0 instead of failing with a usage error.
+- `scripts/release.ps1` checks that the version in `pyproject.toml` is not on PyPI yet,
+  instead of refusing any name that already exists there.
 - `Cookie`, `StoredCookie` and `CookieError` report `setcookie` as their module, so
   their repr, pickles and documentation point at the public name.
 - Development status is Production/Stable.

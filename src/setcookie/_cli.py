@@ -19,7 +19,11 @@ _HEADER = re.compile(r"set-cookie[ \t]*:[ \t]*(.*)", re.IGNORECASE | re.DOTALL)
 
 
 def _lines(args: Sequence[str], stdin: str) -> list[str]:
-    """Explicit lines, or stdin; from a header dump only the Set-Cookie fields are kept."""
+    """Explicit lines, or stdin; from a header dump only the Set-Cookie fields are kept.
+
+    Stdin is a dump when its first non-empty line is a status line or any line is a
+    Set-Cookie field (``grep -i set-cookie`` output); every other line of a dump is ignored.
+    """
     if args:
         return list(args)
     raw = [line.rstrip("\r") for line in stdin.split("\n")]
@@ -29,6 +33,15 @@ def _lines(args: Sequence[str], stdin: str) -> list[str]:
     if headers or (present and present[0].startswith("HTTP/")):
         return headers
     return present
+
+
+def _stdin() -> str:
+    # Header octets do not depend on the locale: read bytes, as UTF-8, keeping any others.
+    buffer = getattr(sys.stdin, "buffer", None)
+    if buffer is None:
+        return sys.stdin.read()
+    data: bytes = buffer.read()
+    return data.decode("utf-8-sig", "surrogateescape")
 
 
 def _plain(value: object) -> Any:
@@ -79,8 +92,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     options = parser.parse_args(argv)
     if options.now is None:
         options.now = datetime.now(timezone.utc)
-    lines = _lines(options.lines, "" if options.lines else sys.stdin.read())
-    if not lines:
+    text = "" if options.lines else _stdin()
+    lines = _lines(options.lines, text)
+    if not options.lines and not text.strip():
         parser.error("no Set-Cookie line given")
     reports = [_report(line, options) for line in lines]
     json.dump([entry for entry, _ in reports], sys.stdout, indent=2)
