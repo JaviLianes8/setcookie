@@ -334,4 +334,6 @@ Disputed findings: none.
 Fix commit: the commit that adds this section, on top of 0797282.
 
 Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
-`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` result below.
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
+PC (CPython 3.14, turn elena/11, clean clone of 2daf6e5, fetched sources absent): 533
+passed, 24 skipped.
