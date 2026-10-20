@@ -68,6 +68,7 @@ def parse_date(text: str) -> datetime | None:
     """
     if not isinstance(text, str):
         raise type_error("text", "a str", text)
+    text = str.__str__(text)  # a subclass cannot change what the algorithm reads
     time: tuple[int, int, int] | None = None
     day: int | None = None
     month: int | None = None
@@ -96,15 +97,26 @@ def parse_date(text: str) -> datetime | None:
         return None
 
 
+def fixdate_problem(text: str) -> str | None:
+    """Why ``text`` is not an IMF-fixdate of a real moment, or None when it is one."""
+    if _FIXDATE.fullmatch(text) is None:
+        return "is not an IMF-fixdate"
+    if parse_fixdate(text) is None:
+        return "is an IMF-fixdate of a moment that does not exist"
+    return None
+
+
 def parse_fixdate(text: str) -> datetime | None:
     """Parse an exact IMF-fixdate (RFC 9110 section 5.6.7); None for anything else.
 
     Only the grammar and the calendar are checked, not that the day name fits the date:
     the draft's own example in section 3.1 pairs "Wed" with 9 June 2026, a Tuesday.
+    The grammar allows a leap second, 23:59:60, which is read as 23:59:59.
     """
     match = _FIXDATE.fullmatch(text)
     if match is None:
         return None
+    leap = match.group(5, 6, 7) == ("23", "59", "60")
     try:
         moment = datetime(
             int(match[4]),
@@ -112,7 +124,7 @@ def parse_fixdate(text: str) -> datetime | None:
             int(match[2]),
             int(match[5]),
             int(match[6]),
-            int(match[7]),
+            59 if leap else int(match[7]),
             tzinfo=timezone.utc,
         )
     except ValueError:
@@ -133,3 +145,6 @@ def format_http_date(value: datetime) -> str:
         f"{moment.day:02d} {_MONTHS[moment.month - 1]} {moment.year:04d} "
         f"{moment.hour:02d}:{moment.minute:02d}:{moment.second:02d} GMT"
     )
+
+
+parse_date.__module__ = "setcookie"

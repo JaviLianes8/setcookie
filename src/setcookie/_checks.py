@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from typing import NoReturn, TypeVar, cast
 
@@ -59,9 +60,10 @@ def check_pair(name: object, value: object) -> None:
         raise type_error("name", "a str", name)
     if not isinstance(value, str):
         raise type_error("value", "a str", value)
+    if not name:
+        fail("cookie name is empty")
     if not is_token(name):
-        where = first_outside(name, TCHAR) or "nothing"
-        fail(f"cookie name {shown(name)} is not an HTTP token (empty, or {where})")
+        fail(f"cookie name {shown(name)} has {first_outside(name, TCHAR)}, outside tchar")
     problem = cookie_value_problem(value)
     if problem:
         fail(f"cookie value has {problem}, outside cookie-octet; encode it first")
@@ -107,6 +109,22 @@ def check_same_site(same_site: object) -> None:
         raise type_error("same_site", "a str or None", same_site)
     if same_site not in _SAME_SITE_VALUES:
         fail(f"same_site must be one of {_SAME_SITE_VALUES}, got {shown(same_site)}")
+
+
+def extension_texts(extensions: Iterable[object]) -> list[str]:
+    """Each extension as written, refusing a name given twice (ASCII case ignored)."""
+    if isinstance(extensions, (str, bytes)):
+        raise type_error("extensions", "an iterable of (name, value) tuples", extensions)
+    texts: list[str] = []
+    seen: set[str] = set()
+    for item in extensions:
+        text = extension_text(item)
+        key = text.partition("=")[0]
+        if ascii_lower(key) in seen:
+            fail(f"extension {shown(key)} is given twice")
+        seen.add(ascii_lower(key))
+        texts.append(text)
+    return texts
 
 
 def extension_text(item: object) -> str:

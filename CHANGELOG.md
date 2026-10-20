@@ -49,8 +49,33 @@ Every change against 0.2.0 is listed here; the
   closed stdin is the same usage error (exit 2) instead of an `AttributeError` traceback.
 - `scripts/release.ps1` checks that the version in `pyproject.toml` is not on PyPI yet,
   instead of refusing any name that already exists there.
-- `Cookie`, `StoredCookie` and `CookieError` report `setcookie` as their module, so
-  their repr, pickles and documentation point at the public name.
+- `Cookie`, `StoredCookie`, `CookieError`, `build`, `expire`, `parse`, `parse_date` and
+  `receive` report `setcookie` as their module, so their repr, pickles and documentation
+  point at the public name.
+- The request host of `receive` and `StoredCookie.matches` is percent-decoded as URL
+  parsers do it, and a host longer than DNS allows (253 characters, labels of 63) or one
+  holding a forbidden domain code point of the WHATWG URL Standard (a control, space,
+  `%`, `<`, `^`, `|` and the like) raises `CookieError` instead of becoming the cookie
+  domain. The length is checked before IDNA conversion, so a hostile host fails at once
+  instead of taking time that grows with the square of its length.
+- The request path is percent-encoded and its `.` and `..` segments resolved, as URL
+  parsers do it, before the default path is taken and before `StoredCookie.matches`
+  compares paths: `/a/../b/c` stores `/b` and `/a b/c` stores `/a%20b`.
+- `is_public_suffix` is called with the Domain without a trailing dot, so a dotted public
+  suffix such as `co.uk.` is refused.
+- `build` and `Cookie.header()` refuse an extension name given twice (case ignored) with
+  their own message instead of the `strict:` one.
+- The error for a bad cookie name says `cookie name is empty`, or names the character
+  outside tchar and its index.
+- Strict mode accepts the leap second `23:59:60` in Expires, as the IMF-fixdate grammar
+  does, and a grammatical date that does not exist (31 Feb, year 0000) gets its own
+  message.
+- `parse`, `receive`, `parse_date` and `StoredCookie.matches` read a `str` subclass as the
+  text it holds, so a subclass cannot hide a control character from the checks.
+- `StoredCookie.is_expired` is true at any `now` for a Max-Age of zero or less, also for
+  an aware `now` in year 1 whose UTC instant is earlier than the stored expiry.
+- The command line stops without a traceback, with status 141, when the reader closes
+  its output early (`| head`), and its usage line reads `[--now ISO] [LINE ...]`.
 - Development status is Production/Stable.
 
 ### Added
@@ -59,7 +84,7 @@ Every change against 0.2.0 is listed here; the
 - GUIDE.md: the parsing, building, strict and storage rules, the full error list, and
   the move from 0.2.0.
 
-## [0.2.0]
+## [0.2.0] - 2026-10-19
 
 ### Changed
 
@@ -89,7 +114,7 @@ Every change against 0.2.0 is listed here; the
 - `parse_date()`, the cookie date algorithm.
 - The `setcookie` command and `python -m setcookie`: JSON output, `--strict`, `--url`.
 
-## [0.1.0]
+## [0.1.0] - 2026-10-12
 
 - First release.
 - `build` assembles one Set-Cookie line from a name, value and the RFC 6265 attributes

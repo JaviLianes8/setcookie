@@ -38,11 +38,18 @@ cookie a server may not send (a nameless one, for example).
 `parse(line, strict=True)` also checks the server grammar of section 4.1.1 first and
 raises `CookieError` with a message that starts with `strict:` and names the first rule
 broken: the name is a token, the value is cookie-octets (optionally in one pair of
-double quotes), Expires is an IMF-fixdate, Max-Age is a non-zero digit followed by
-digits, Domain is a host name, Path and extensions are av-octets, flags have no value,
+double quotes), Expires is an IMF-fixdate of a moment that exists, Max-Age is a
+non-zero digit followed by digits, Domain is a host name, Path and extensions are av-octets, flags have no value,
 SameSite is Strict, Lax or None, no attribute appears twice, no empty attribute, no
 trailing whitespace, the size limits, the `__Secure-` and `__Host-` prefix rules, and
 Secure on SameSite=None and Partitioned cookies.
+
+Expires is checked in two steps, each with its own message: the text must follow the
+IMF-fixdate grammar (`is not an IMF-fixdate`), and the date and time must exist in the
+calendar (`is an IMF-fixdate of a moment that does not exist`, for 31 Feb or the year
+0000). The day name is not compared with the date. A leap second, `23:59:60`, is
+allowed by the grammar and passes, but the cookie date algorithm of section 5.1.1 refuses
+a second over 59, so `parse` then reads no Expires at all, as user agents do.
 
 ## Dates: `parse_date(text)`
 
@@ -56,8 +63,9 @@ not read: the result is an aware datetime in UTC.
 
 `build(name, value, *, expires, max_age, domain, path="/", secure, http_only, same_site,
 partitioned, extensions)` returns one line that `parse(..., strict=True)` reads back to
-the same values, with two exceptions: the Domain reads back lower-cased, and Expires is
-written to the whole second, so microseconds are dropped. A `str` or `int` subclass,
+the same values, with three exceptions: the Domain reads back lower-cased, Expires is
+written to the whole second, so microseconds are dropped, and a naive `expires` (or one
+whose `tzinfo` gives no offset) reads back as the same instant, aware, in UTC. A `str` or `int` subclass,
 such as an Enum member, is written as the plain value it holds. It writes the attributes in this order: Expires, Max-Age, Domain, Path,
 Secure, HttpOnly, SameSite, Partitioned, then the extensions.
 
@@ -77,7 +85,8 @@ It raises `CookieError` when:
 - `same_site` is not exactly `"Lax"`, `"Strict"` or `"None"`;
 - an extension name is empty, has `=`, outer whitespace or a forbidden character, or is
   a standard attribute name; an extension value has outer whitespace or a forbidden
-  character;
+  character; the same extension name is given twice (case is ignored, A to Z only), which
+  `Cookie.header()` also meets for a parsed line that repeats an extension;
 - a `__Secure-` name lacks Secure, a `__Host-` name lacks Secure, has a Domain or a Path
   other than `/` (prefixes are matched without case, as browsers do);
 - SameSite=None or Partitioned comes without Secure.
@@ -94,7 +103,7 @@ returns a frozen `StoredCookie`, or raises `CookieError` naming the rule that ma
 user agent ignore the line:
 
 - the line itself is ignored (see `parse`), or the URL is malformed, has no host, or a
-  host that cannot be canonicalized (an `xn--` label that does not decode);
+  host that cannot be canonicalized (see below);
 - the Domain attribute is not ASCII, is a public suffix (when `is_public_suffix` is
   given and the host is not that suffix), or the host does not domain-match it;
 - the cookie is Secure and the URL is not `https` or `wss`;
@@ -109,6 +118,22 @@ earliest representable time; a cookie with neither is a session cookie
 (`persistent=False`, `expiry=None`). Non-ASCII hosts are converted with Python's IDNA
 2003 codec, which differs from IDNA 2008 for a few characters such as sharp s.
 
+The request host is canonicalized the way a browser's URL parser does it. It is
+percent-decoded first (`ex%41mple.com` is `example.com`). It must fit DNS: at most 253
+characters without a trailing dot and labels of at most 63, counted before IDNA
+conversion, so a hostile host is refused at once instead of costing the punycode encoder
+time that grows with the square of its length. After conversion it must not hold a
+forbidden domain code point of the WHATWG URL Standard: a C0 control, space, `#`, `%`,
+`/`, `:`, `<`, `>`, `?`, `@`, `[`, `\`, `]`, `^`, `|` or DEL (inside the brackets of an
+IPv6 literal the address must be valid instead). Any of these raises `CookieError`.
+Other characters that URL parsers accept, such as `_` and `"`, are kept.
+
+The request path is normalized the way that parser does it before it gives the default
+path or is matched: spaces, double quotes, `<`, `>`, `^`, backquotes, braces, controls
+and non-ASCII characters are percent-encoded as UTF-8, existing `%XX` escapes are kept,
+and `.` and `..` segments (also spelled `%2e`) are resolved, so `/a/../b/c` stores the
+path `/b` and `/a b/c` stores `/a%20b`.
+
 The request host keeps a trailing dot, as browsers keep it: `www.example.com.` is a
 different host from `www.example.com`, a cookie of one is not sent to the other, and
 from the dotted host only a dotted Domain such as `example.com.` domain-matches. A host
@@ -116,11 +141,20 @@ whose last label is a number is read as an IPv4 address the way the WHATWG URL p
 reads it: `127.1`, `0x7f.0.0.1` and `2130706433` are all `127.0.0.1`, and a host such as
 `1.2.3.4.5` or `256.0.0.1` cannot be canonicalized and raises `CookieError`.
 
+`is_public_suffix` is called with the Domain attribute as `parse` reads it, lower-cased
+(A to Z only) and without its leading dot, and also without a trailing dot, the way
+public suffix lookups treat a fully qualified name: `Domain=.CO.UK.` asks about
+`"co.uk"`. It is only called for a non-empty ASCII Domain. Whether the host is that
+suffix is still compared with the dot, so from `https://co.uk./` the attribute
+`Domain=co.uk.` is reset to a host-only cookie.
+
 The rules that need the rest of the cookie store (step 16, a non-secure cookie
 shadowing a secure one, and steps 23 and 24, replacing an old cookie and eviction) are
 left to the caller.
 
-`StoredCookie.is_expired(now)` is true once `now` reaches the expiry. A session cookie
+`StoredCookie.is_expired(now)` is true once `now` reaches the expiry; the earliest
+representable time that a Max-Age of zero or less gives is reached at any `now`, even an
+aware time in year 1 whose UTC instant comes before it. A session cookie
 never expires there: only the caller knows when the session ends.
 `StoredCookie.matches(url)` is the domain, path and Secure check of the retrieval model
 (section 5.8.3); SameSite and the request context are not checked.
@@ -148,12 +182,18 @@ ignored, and a dump without any prints `[]` and exits 0. It prints a JSON array 
 entry per line: `line`, then `cookie` (the fields of `Cookie`), `stored` with `--url`
 (the fields of `StoredCookie`) or `error`. Dates are ISO 8601. The exit status is 0 when
 every line was read, 1 when any was refused, 2 for a usage error, such as no line given
-and nothing on stdin (empty or closed). `--now` defaults to the clock and a time without a zone is UTC.
+and nothing on stdin (empty or closed), and 141 when the reader of the output closed it
+early (`| head`): the command then stops without a traceback, as a tool killed by SIGPIPE
+does. `--now` defaults to the clock and a time without a zone is UTC. A field name
+followed by spaces or tabs before its colon (`Set-Cookie : a=1`) is still read as a
+Set-Cookie field, although RFC 9112 forbids that whitespace.
 
 ## Moving from 0.2.0
 
-Code that passes the documented types sees the same results, except for the request
-hosts and command line input listed below. What changed:
+Code that passes the documented types sees the same results for ordinary input. The
+changes below touch error types and messages, unusual request URLs, `expires` values
+whose `tzinfo` gives no offset, `str` and `int` subclasses such as Enum members, repeated
+extension names and command line input. What changed:
 
 - Wrong argument types raise `TypeError` where 0.2.0 raised `CookieError`: catch
   `TypeError` as well, or fix the call. Flags such as `secure` must be real `bool`s, and
@@ -164,6 +204,15 @@ hosts and command line input listed below. What changed:
 - `receive` no longer raises `OverflowError` near the end of the calendar.
 - A request host keeps its trailing dot (0.2.0 dropped it), and a host that ends in a
   number is read as an IPv4 address (0.2.0 kept `127.1` as a name).
+- `build` takes an `expires` whose `tzinfo` gives no offset as UTC, like a naive one;
+  0.2.0 took it as local time, so the line differs by the machine's UTC offset.
+- `build` refuses an extension name given twice (case ignored); 0.2.0 wrote both.
+- A request host is percent-decoded and refused when it is longer than DNS allows or has
+  a forbidden code point such as a space or a control character; 0.2.0 stored such a
+  host as the cookie domain.
+- The request path is percent-encoded and its dot segments resolved before the default
+  path is taken and before `matches` compares it, as browsers do.
+- `is_public_suffix` gets the Domain without a trailing dot.
 - `build` writes the plain value of a `str` or `int` subclass, so an Enum member gives
   its value instead of its name.
 - The command line reads stdin as UTF-8 instead of the locale encoding, and a header

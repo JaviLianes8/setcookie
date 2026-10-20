@@ -46,6 +46,7 @@ def parse(line: str, *, strict: bool = False) -> Cookie:
         raise type_error("line", "a str", line)
     if not isinstance(strict, bool):
         raise type_error("strict", "a bool", strict)
+    line = str.__str__(line)  # a subclass cannot hide characters from the checks
     if strict:
         check_strict(line)
     where = first_ctl(line)
@@ -117,3 +118,6 @@ def _delta_seconds(raw: str, previous: int | None) -> int | None:
     if not digits or not all("0" <= char <= "9" for char in digits):
         return previous
     return int(raw)
+
+
+parse.__module__ = "setcookie"

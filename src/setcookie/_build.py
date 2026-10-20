@@ -15,10 +15,9 @@ from ._checks import (
     check_same_site,
     exact,
     expires_text,
-    extension_text,
+    extension_texts,
     fail,
 )
-from ._errors import type_error
 from ._model import SameSite
 from ._rules import prefix_problem, secure_problem
 from ._strict import check_strict
@@ -45,7 +44,8 @@ def build(
     Every part is checked on its own before it is joined, so no argument can end the
     line, start another attribute or inject a header; a ``str`` or ``int`` subclass, such
     as an Enum member, is written as the plain value it holds. Prefix rules, the Secure
-    requirement of SameSite=None and Partitioned, and the size limits are enforced.
+    requirement of SameSite=None and Partitioned, and the size limits are enforced; an
+    extension name may appear only once, whatever its case.
     A naive ``expires`` is taken to be UTC, not local time. ``path=None`` leaves the
     Path attribute out. An argument of the wrong type raises TypeError.
 
@@ -81,9 +81,7 @@ def build(
         parts.append(f"SameSite={same_site}")
     if partitioned:
         parts.append("Partitioned")
-    if isinstance(extensions, (str, bytes)):
-        raise type_error("extensions", "an iterable of (name, value) tuples", extensions)
-    parts.extend(extension_text(item) for item in extensions)
+    parts.extend(extension_texts(extensions))
     problem = prefix_problem(
         name, secure=secure, has_domain=domain is not None, path=path
     ) or secure_problem(same_site=same_site, partitioned=partitioned, secure=secure)
@@ -125,3 +123,7 @@ def expire(
         same_site=same_site,
         partitioned=partitioned,
     )
+
+
+build.__module__ = "setcookie"
+expire.__module__ = "setcookie"

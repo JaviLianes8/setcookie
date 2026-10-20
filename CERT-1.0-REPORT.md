@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 5: all findings fixed (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 6: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -405,3 +405,56 @@ Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict
 `mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on the laptop
 (CPython 3.14.6, turn portatil/4, clean clone of fb1580e, fetched sources absent, so
 their tests and the opt-in e2e test skip): 537 passed, 24 skipped.
+
+### Round 6
+
+Five fresh lenses ran against 9e88df0 (the first round of a second full pass). None
+reported PASS; every finding is fixed below. Each behaviour fix has a contract in
+`tests/test_qa6_fixes.py` or `tests/test_qa6_pins.py` that failed on 9e88df0 first
+(run against the 9e88df0 source: 82 of 170 cases failed, and the hostile host timing
+case was stopped after two minutes; all 171 pass after the fix); the lens e findings that only
+asked for a missing contract got a test that passes on 9e88df0 and fails on its mutant.
+Every behaviour change is in the 1.0.0 section of the CHANGELOG and in the GUIDE.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| a | F1: `is_public_suffix` got `co.uk.` for `Domain=co.uk.`, so a dotted public suffix was stored | the callable gets the Domain without its trailing dot (lower-case ASCII, no leading dot), documented in the `receive` docstring and the GUIDE; `test_qa6_fixes::test_the_public_suffix_callable_gets_the_domain_without_a_trailing_dot` |
+| a, e | A-F2, E-F2-B03: a repeated extension name was refused only by the final strict self-check, with a `strict:` message, and was not pinned | `_checks.extension_texts` refuses it in the builder (`extension 'priority' is given twice`, case ignored), also for `Cookie.header()`; added to the GUIDE error list; `test_qa6_fixes::test_build_refuses_an_extension_name_given_twice` |
+| a | F3: a naive `expires` reads back aware in UTC, not listed | GUIDE: third read-back exception |
+| a | F4: GUIDE migration list missed the no-offset `tzinfo` change and its opening sentence was wrong | bullet added (with the other changes of this round), opening sentence reworded |
+| a, e | A-F5, E-F9-X18: the bad-name message printed both causes; the length suffix of a cut text was not pinned | `cookie name is empty`, or `cookie name 'a b' has U+0020 at index 1, outside tchar`; doctest of `Cookie.header` updated; `test_qa6_fixes::test_a_bad_cookie_name_names_the_rule_it_breaks`, `test_qa6_pins::test_a_long_quoted_text_is_cut_and_its_length_given` |
+| a | F6: the five public functions reported private modules | `__module__ = "setcookie"` on `build`, `expire`, `parse`, `parse_date`, `receive`; `test_qa6_fixes::test_the_public_functions_report_the_public_module` |
+| a | F7: CLI usage line differed from the GUIDE | `metavar="ISO"` and `metavar="LINE"`; usage now `setcookie [-h] [--strict] [--url URL] [--now ISO] [LINE ...]` |
+| a | F8: 0.2.0 and 0.1.0 had no date | `## [0.2.0] - 2026-10-19` (PyPI upload time), `## [0.1.0] - 2026-10-12` (commit 841d91f) |
+| b, c | B-F1, C-F2: hosts with controls, space, `<`, `^`, `|`, `%` were stored; `%41` kept literally | the host is percent-decoded, then refused after IDNA conversion when it holds a forbidden domain code point of the WHATWG URL Standard (list fetched from url.spec.whatwg.org on 2026-10-21); a bracketed host must be a valid IPv6 address; `test_qa6_fixes::test_a_host_with_a_forbidden_code_point_is_refused` (13 hosts, also through `matches`), `test_the_host_is_percent_decoded_as_a_url_parser_does`. Partly disputed, see below |
+| b | F2: the request path was used verbatim | `_url._path` percent-encodes with the WHATWG path percent-encode set plus non-ASCII as UTF-8 and resolves `.`/`..` segments (also `%2e` spellings) for the default path and for `matches`; `/a/../b/c` gives `/b`, `/a b/c` gives `/a%20b`, `/é/x` gives `/%C3%A9`, as lens b measured in Chrome; `test_qa6_fixes::test_the_request_path_is_normalised_as_a_url_parser_does` (8 cases), `test_matches_normalises_the_request_path` |
+| b | F3: strict refused a leap second; calendar errors shared the grammar message | `_dates.fixdate_problem`: `23:59:60` passes (RFC 9110 5.6.7 ABNF comment, fetched), an impossible moment says `is an IMF-fixdate of a moment that does not exist`; GUIDE documents both and that section 5.1.1 then drops the date; `test_qa6_fixes::test_strict_accepts_a_leap_second_and_names_an_impossible_date` |
+| c | F1: host canonicalization was quadratic in host length | the host must fit 253 characters and labels of 63 (IDNA separators counted) before the codec runs; `test_qa6_fixes::test_a_huge_hostile_host_fails_fast`: a 32,000-character CJK label, 32,000 `é.` labels, a 64-character label and a 255-character host each fail in under 50 ms, 253 and 63 still pass |
+| c | F3: a `str` subclass with a lying `__iter__` hid CR LF | `parse`, `receive`, `parse_date` and the URL reader work on `str.__str__(text)`; `test_qa6_fixes::test_a_str_subclass_is_read_as_the_text_it_holds` |
+| c | F4: Max-Age=0 not expired at a year-1 aware `now` with a positive offset | `is_expired` treats the earliest-time sentinel as always reached; `test_qa6_fixes::test_max_age_zero_is_expired_even_at_the_earliest_aware_time` |
+| d | F1: BrokenPipeError traceback and status 120 when the output pipe closes | `_cli.main` catches the closed pipe (EPIPE, or EINVAL on Windows), points stdout and stderr at devnull and returns 141; GUIDE exit statuses; `test_qa6_pins::test_a_closed_output_pipe_stops_quietly` (subprocess, read end closed before 5,000 lines are written) |
+| e | F1-T16: `__Host-` cookie with a public-suffix Domain reset to host-only not pinned | `test_qa6_pins::test_a_host_prefix_survives_a_public_suffix_domain_reset_to_host_only` |
+| e | F3-S14: non-ASCII whitespace at the edges of an extension in strict mode not pinned | `test_qa6_pins::test_strict_refuses_non_ascii_whitespace_at_the_edges_of_an_extension` (U+00A0, U+0085, U+3000, both edges) |
+| e | F4-C13: the exact tchar set not pinned | `test_qa6_pins::test_a_cookie_name_is_exactly_an_http_token`: all 128 ASCII characters through `build` and strict `parse` |
+| e | F5-T15, F6-X01: a `tzinfo` whose `utcoffset()` is None not pinned for `receive` and `is_expired` | `test_qa6_pins::test_receive_refuses_a_now_whose_tzinfo_gives_no_offset`, `test_is_expired_refuses_a_now_whose_tzinfo_gives_no_offset` |
+| e | F7-B06: `extensions=""` not pinned | `test_qa6_pins::test_extensions_given_as_a_string_raise_type_error` (`""`, a non-empty str, `b""`) |
+| e | F8-L09: whitespace before the colon of a dump field not pinned | kept on purpose (a dump is read leniently), commented in `_cli.py`, documented in the GUIDE and pinned by `test_qa6_pins::test_a_header_dump_field_may_have_space_before_its_colon` (space and tab) |
+
+Internal: request URL handling moved from `_match.py` to the new `_url.py`, so every file
+stays under 200 lines.
+
+Disputed findings:
+
+- B-F1 (partly). The forbidden code points are fixed as above, but two parts of the
+  suggested fix are not taken. (1) `"` in a host is accepted: it is not a forbidden host
+  or domain code point in the WHATWG URL Standard (definitions fetched from
+  https://url.spec.whatwg.org/ on 2026-10-21: the forbidden domain code points are the
+  forbidden host code points, C0 controls, `%` and DEL; `"` is in neither list). (2)
+  Labels are not required to be LDH: the same standard accepts `_`, and browsers keep
+  such hosts. Evidence run on this PC with Node.js 24.18.0, whose `URL` follows the
+  WHATWG parser: `new URL('https://a"b.com/').href` is `https://a"b.com/...`,
+  `new URL('https://a_b.com/')` is accepted, while `a b.com`, `a<b.com`, `a^b.com`,
+  `a|b.com` and `a%00b.com` throw, and `a%41b.com` gives `aab.com`. Refusing `"` or `_`
+  would make `receive` reject URLs a browser sends cookies to.
+
+Fix commit: the commit that adds this section, on top of 9e88df0.

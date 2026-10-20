@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from ._errors import type_error
 
 SameSite = Literal["Lax", "Strict", "None"]
+# The expiry of a Max-Age of zero or less: expired at any time.
+EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
 
 
 @dataclass(frozen=True)
@@ -51,7 +53,7 @@ class Cookie:
         >>> Cookie("", "nameless").header()
         Traceback (most recent call last):
         ...
-        setcookie.CookieError: cookie name '' is not an HTTP token (empty, or nothing)
+        setcookie.CookieError: cookie name is empty
         """
         from ._build import build
 
@@ -104,7 +106,8 @@ class StoredCookie:
         """True when the expiry time has been reached at ``now`` (an aware datetime).
 
         A naive ``now`` raises ValueError. A session cookie never expires here: it lasts
-        until the session ends, which only the caller knows.
+        until the session ends, which only the caller knows. An expiry at the earliest
+        representable time, which a Max-Age of zero or less gives, is reached at any ``now``.
 
         >>> from datetime import datetime, timezone
         >>> from setcookie import receive
@@ -117,7 +120,9 @@ class StoredCookie:
             raise type_error("now", "a datetime", now)
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("now must be an aware datetime")
-        return self.expiry is not None and self.expiry <= now
+        if self.expiry is None:
+            return False
+        return self.expiry == EARLIEST or self.expiry <= now
 
     def matches(self, url: str) -> bool:
         """True when a request to ``url`` would carry this cookie (domain, path, secure).

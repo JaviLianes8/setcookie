@@ -18,7 +18,7 @@ from ._chars import (
     octets,
     shown,
 )
-from ._dates import parse_fixdate
+from ._dates import fixdate_problem
 from ._errors import CookieError
 from ._rules import prefix_problem, secure_problem
 
@@ -74,8 +74,8 @@ def _attribute(av: str) -> tuple[str, str]:
 
 
 def _check_value(keyword: str, text: str) -> None:
-    if keyword == "expires" and parse_fixdate(text) is None:
-        _fail(f"Expires={shown(text)} is not an IMF-fixdate")
+    if keyword == "expires" and (problem := fixdate_problem(text)):
+        _fail(f"Expires={shown(text)} {problem}")
     if keyword == "max-age" and not _MAX_AGE.fullmatch(text):
         _fail(f"Max-Age={shown(text)} is not a non-zero-digit followed by DIGITs")
     if keyword == "domain" and not is_hostname(text):

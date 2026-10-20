@@ -51,7 +51,7 @@ def test_build_accepts_quoted_and_empty_values() -> None:
     "name", ["", "s id", "sid;", "sid=", "s\u00e9", "a\r\nSet-Cookie: x", "a,b", '"a"']
 )
 def test_build_rejects_names_that_are_not_tokens(name: str) -> None:
-    with pytest.raises(CookieError, match="not an HTTP token"):
+    with pytest.raises(CookieError, match=r"^cookie name (is empty|.* outside tchar)$"):
         build(name, "abc")
 
 

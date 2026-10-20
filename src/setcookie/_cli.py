@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
+import errno
 import json
+import os
 import re
 import sys
 from collections.abc import Sequence
@@ -15,6 +18,10 @@ from ._errors import CookieError
 from ._parse import parse
 from ._store import receive
 
+# A reader that stops early (head, a pager) closes the pipe: stop quietly with the status
+# a shell reports for a tool killed by SIGPIPE.
+SIGPIPE_STATUS = 141
+# RFC 9112 forbids space before the colon, but a dump is read leniently.
 _HEADER = re.compile(r"set-cookie[ \t]*:[ \t]*(.*)", re.IGNORECASE | re.DOTALL)
 
 
@@ -85,11 +92,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="setcookie",
         description="Parse Set-Cookie lines (arguments, or stdin such as a curl -sI dump).",
     )
-    parser.add_argument("lines", nargs="*", help="Set-Cookie values; read stdin when absent")
+    parser.add_argument(
+        "lines", nargs="*", metavar="LINE", help="Set-Cookie values; read stdin when absent"
+    )
     parser.add_argument("--strict", action="store_true", help="check the server grammar")
     parser.add_argument("--url", help="show what a user agent stores for this request URL")
     parser.add_argument(
-        "--now", type=_moment, default=None, help="ISO time for --url (default: the clock)"
+        "--now",
+        type=_moment,
+        default=None,
+        metavar="ISO",
+        help="ISO time for --url (default: the clock)",
     )
     options = parser.parse_args(argv)
     if options.now is None:
@@ -99,9 +112,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not options.lines and not text.strip():
         parser.error("no Set-Cookie line given")
     reports = [_report(line, options) for line in lines]
-    json.dump([entry for entry, _ in reports], sys.stdout, indent=2)
-    sys.stdout.write("\n")
     failures = [entry["error"] for entry, ok in reports if not ok]
-    for reason in failures:
-        print(f"setcookie: {reason}", file=sys.stderr)
+    try:
+        json.dump([entry for entry, _ in reports], sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        for reason in failures:
+            print(f"setcookie: {reason}", file=sys.stderr)
+    except OSError as error:
+        if not _closed_pipe(error):
+            raise
+        return SIGPIPE_STATUS
     return 1 if failures else 0
+
+
+def _closed_pipe(error: OSError) -> bool:
+    """True for a write to a pipe its reader closed; then later writes go to devnull."""
+    # Windows reports a write to a closed pipe as EINVAL as well as EPIPE.
+    if not isinstance(error, BrokenPipeError) and error.errno != errno.EINVAL:
+        return False
+    for stream in (sys.stdout, sys.stderr):
+        # So the flush at exit cannot fail on the same pipe again.
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            os.dup2(os.open(os.devnull, os.O_WRONLY), stream.fileno())
+    return True
