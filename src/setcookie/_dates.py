@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from ._errors import type_error
+
 _DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 _MONTHS = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -53,8 +55,19 @@ def parse_date(text: str) -> datetime | None:
     """Parse a cookie-date with the algorithm of section 5.1.1; None when it fails.
 
     The result is an aware datetime in UTC. Zone names and offsets are not read: the
-    algorithm treats every time as UTC.
+    algorithm treats every time as UTC. A ``text`` that is not a str raises TypeError.
+
+    >>> print(parse_date("Wed, 09 Jun 2021 10:18:14 GMT"))
+    2021-06-09 10:18:14+00:00
+    >>> print(parse_date("Fri Jan 01 2038 00:00:00 +0200"))
+    2038-01-01 00:00:00+00:00
+    >>> print(parse_date("1-Jan-70 0:0:0"))
+    1970-01-01 00:00:00+00:00
+    >>> print(parse_date("31 Feb 2030 00:00:00"), parse_date("01 Jan 1600 00:00:00"))
+    None None
     """
+    if not isinstance(text, str):
+        raise type_error("text", "a str", text)
     time: tuple[int, int, int] | None = None
     day: int | None = None
     month: int | None = None

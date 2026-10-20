@@ -6,6 +6,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-20
+
+The public API is now stable: the nine names in `setcookie.__all__`, their parameters,
+defaults and the error types below follow Semantic Versioning from this release on.
+Every change against 0.2.0 is listed here; the
+[GUIDE](https://github.com/JaviLianes8/setcookie/blob/main/GUIDE.md) has the details.
+
+### Changed
+
+- An argument of the wrong type raises `TypeError` instead of `CookieError`: in `build`
+  and `expire` a name, value, domain, path or SameSite that is not a `str`, an `expires`
+  that is not a `datetime`, a `max_age` that is not an `int` (a `bool` included), a
+  `secure`, `http_only` or `partitioned` that is not a `bool`, an extension that is not a
+  `(str, str | None)` tuple, or `extensions` given as a string. `parse` also checks that
+  `strict` is a `bool`; `parse_date` raises `TypeError` with a clear message for a
+  non-string; `receive` checks `line`, `url`, `now`, `cross_site` and `is_public_suffix`;
+  `StoredCookie.matches` checks `url`. Values that have the right type but break a rule
+  still raise `CookieError`.
+- `StoredCookie.is_expired` raises `ValueError` for a naive `now` (it raised the
+  comparison `TypeError` before) and `TypeError` for something that is not a datetime.
+- Error messages never quote a cookie value, a whole line or a request URL, and cut any
+  other quoted text to 40 characters. A bad character is named by code point and index,
+  for example `cookie value has U+000D at index 1, outside cookie-octet`.
+- `receive` returns the latest representable time as the expiry when `now` plus the
+  lifetime does not fit a `datetime`, instead of raising `OverflowError`.
+- `Cookie`, `StoredCookie` and `CookieError` report `setcookie` as their module, so
+  their repr, pickles and documentation point at the public name.
+- Development status is Production/Stable.
+
+### Added
+
+- A runnable example in the docstring of every public name and method, run as tests.
+- GUIDE.md: the parsing, building, strict and storage rules, the full error list, and
+  the move from 0.2.0.
+
 ## [0.2.0]
 
 ### Changed

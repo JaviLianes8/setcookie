@@ -8,12 +8,12 @@ from ._chars import (
     MAX_ATTRIBUTE_OCTETS,
     MAX_PAIR_OCTETS,
     ascii_lower,
-    has_forbidden_ctl,
+    first_ctl,
     octets,
     trim,
 )
 from ._dates import parse_date
-from ._errors import CookieError
+from ._errors import CookieError, type_error
 from ._model import Cookie, SameSite
 from ._strict import check_strict
 
@@ -27,14 +27,30 @@ def parse(line: str, *, strict: bool = False) -> Cookie:
     other than HTAB, an empty name with an empty value, or a name and value longer than
     4096 octets together. Unknown or malformed attributes are skipped, never rejected.
     With ``strict=True`` the line must also follow the server grammar of section 4.1.1,
-    and CookieError names the first rule it breaks.
+    and CookieError names the first rule it breaks. A ``line`` that is not a str raises
+    TypeError.
+
+    >>> cookie = parse("sid=abc; Domain=.Example.com; Max-Age=+5; samesite=lax; Priority=High")
+    >>> cookie.name, cookie.value, cookie.domain, cookie.max_age, cookie.same_site
+    ('sid', 'abc', 'example.com', None, 'Lax')
+    >>> cookie.extensions
+    (('Priority', 'High'),)
+    >>> parse("nameless").name
+    ''
+    >>> parse("sid=abc; Max-Age=0", strict=True)
+    Traceback (most recent call last):
+    ...
+    setcookie.CookieError: strict: Max-Age='0' is not a non-zero-digit followed by DIGITs
     """
     if not isinstance(line, str):
-        raise TypeError(f"expected str, got {type(line).__name__}")
+        raise type_error("line", "a str", line)
+    if not isinstance(strict, bool):
+        raise type_error("strict", "a bool", strict)
     if strict:
         check_strict(line)
-    if has_forbidden_ctl(line):
-        raise CookieError(f"control character in the line: {line!r}")
+    where = first_ctl(line)
+    if where:
+        raise CookieError(f"control character {where}: user agents ignore the line")
     pair, separator, attributes = line.partition(";")
     if "=" in pair:
         raw_name, _, raw_value = pair.partition("=")
@@ -44,7 +60,7 @@ def parse(line: str, *, strict: bool = False) -> Cookie:
     if octets(name) + octets(value) > MAX_PAIR_OCTETS:
         raise CookieError("the name and value are longer than 4096 octets together")
     if not name and not value:
-        raise CookieError(f"empty name and empty value: {line!r}")
+        raise CookieError("empty name and empty value: user agents ignore the line")
     return _read_attributes(name, value, attributes.split(";") if separator else [])
 
 

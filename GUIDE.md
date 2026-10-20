@@ -1,0 +1,150 @@
+# setcookie guide
+
+This guide states what each public name promises. The rules come from
+[draft-ietf-httpbis-rfc6265bis-22](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/)
+(the successor of RFC 6265, section numbers below refer to it) and
+[draft-cutler-httpbis-partitioned-cookies-01](https://datatracker.ietf.org/doc/draft-cutler-httpbis-partitioned-cookies/)
+for the Partitioned attribute.
+
+## Reading a line: `parse(line, *, strict=False)`
+
+`parse` runs the user agent algorithm of section 5.6 and returns a frozen `Cookie`.
+
+- The whole line is ignored, and `CookieError` raised, when it holds a control character
+  other than tab (%x00-08, %x0A-1F, %x7F), when the name and the value are both empty, or
+  when the name and value are longer than 4096 octets together (UTF-8).
+- The pair is split at the first `;`, then at the first `=`. A pair without `=` is a
+  nameless cookie: `parse("abc")` has name `""` and value `"abc"`.
+- Only spaces and tabs are trimmed, never other whitespace.
+- An attribute whose value is longer than 1024 octets is skipped. Attribute names are
+  matched without case (A to Z only).
+- When an attribute repeats, the last one wins. An unreadable Expires or Max-Age is
+  skipped, so an earlier valid one stays; an empty Domain and an unknown SameSite value
+  reset the earlier one to `None`.
+- Expires is read with the cookie date algorithm (`parse_date`). Max-Age keeps only
+  digits with an optional leading `-` (`+5`, `1_0` and ` 5x` are skipped). Domain loses
+  one leading dot and is lower-cased. Path is kept when it starts with `/`; an empty or
+  relative Path reads as `""`, meaning "use the default path". SameSite is read without
+  case into `"Lax"`, `"Strict"` or `"None"`.
+- Secure, HttpOnly and Partitioned are flags; anything after `=` is ignored for them.
+- Any other attribute goes to `extensions`, in order, as `(name, value)`, with `None`
+  when it had no `=`.
+
+`Cookie.header()` renders the cookie with `build`, so it raises `CookieError` for a
+cookie a server may not send (a nameless one, for example).
+
+### Strict mode
+
+`parse(line, strict=True)` also checks the server grammar of section 4.1.1 first and
+raises `CookieError` with a message that starts with `strict:` and names the first rule
+broken: the name is a token, the value is cookie-octets (optionally in one pair of
+double quotes), Expires is an IMF-fixdate, Max-Age is a non-zero digit followed by
+digits, Domain is a host name, Path and extensions are av-octets, flags have no value,
+SameSite is Strict, Lax or None, no attribute appears twice, no empty attribute, no
+trailing whitespace, the size limits, the `__Secure-` and `__Host-` prefix rules, and
+Secure on SameSite=None and Partitioned cookies.
+
+## Dates: `parse_date(text)`
+
+The algorithm of section 5.1.1: the text is cut at delimiters, the first token that
+looks like a time, a day, a month and a year is taken, two-digit years 70 to 99 mean
+19xx and 0 to 69 mean 20xx, and the date fails (`None`) before 1601, with an hour over
+23, a minute or second over 59, or a day that does not exist. Zone names and offsets are
+not read: the result is an aware datetime in UTC.
+
+## Writing a line: `build` and `expire`
+
+`build(name, value, *, expires, max_age, domain, path="/", secure, http_only, same_site,
+partitioned, extensions)` returns one line that `parse(..., strict=True)` reads back to
+the same values. It writes the attributes in this order: Expires, Max-Age, Domain, Path,
+Secure, HttpOnly, SameSite, Partitioned, then the extensions.
+
+It raises `CookieError` when:
+
+- the name is not an HTTP token or the value leaves cookie-octet (encode arbitrary data,
+  with Base64 for example);
+- the name and value exceed 4096 octets, or an attribute value exceeds 1024;
+- `max_age` is not between 1 and 10**1024 - 1 (the grammar has no `Max-Age=0`: use
+  `expire` to delete a cookie);
+- `expires` is before 1601 or cannot be converted to UTC; a naive datetime is UTC;
+- `domain` is not a host name: ASCII, at most 253 characters, no leading dot, no port,
+  labels of 1 to 63 letters, digits or hyphens that do not start or end with a hyphen;
+- `path` is not empty and does not start with `/`, has outer whitespace, a control
+  character, a non-ASCII character or `;` (`path=None` leaves the attribute out);
+- `same_site` is not exactly `"Lax"`, `"Strict"` or `"None"`;
+- an extension name is empty, has `=`, outer whitespace or a forbidden character, or is
+  a standard attribute name; an extension value has outer whitespace or a forbidden
+  character;
+- a `__Secure-` name lacks Secure, a `__Host-` name lacks Secure, has a Domain or a Path
+  other than `/` (prefixes are matched without case, as browsers do);
+- SameSite=None or Partitioned comes without Secure.
+
+`expire(name, ...)` builds the same line with an empty value and
+`Expires=Thu, 01 Jan 1970 00:00:00 GMT`; pass the Domain and Path the cookie was set
+with.
+
+## What a browser keeps: `receive` and `StoredCookie`
+
+`receive(line, url, *, now, cross_site=False, is_public_suffix=None)` runs the storage
+model of section 5.7 for one line received from `url` at `now` (an aware datetime) and
+returns a frozen `StoredCookie`, or raises `CookieError` naming the rule that makes a
+user agent ignore the line:
+
+- the line itself is ignored (see `parse`), or the URL is malformed, has no host, or a
+  host that cannot be canonicalized (an `xn--` label that does not decode);
+- the Domain attribute is not ASCII, is a public suffix (when `is_public_suffix` is
+  given and the host is not that suffix), or the host does not domain-match it;
+- the cookie is Secure and the URL is not `https` or `wss`;
+- `cross_site=True` and SameSite is not None;
+- SameSite=None or Partitioned without Secure, or a broken prefix rule;
+- a nameless cookie whose value starts with `__Secure-` or `__Host-`.
+
+Without a Domain the cookie is host-only on the request host. Without a usable Path it
+gets the default path, the directory of the request path. Expiry follows Max-Age over
+Expires, both capped at 400 days from `now`; `Max-Age` of zero or less gives the
+earliest representable time; a cookie with neither is a session cookie
+(`persistent=False`, `expiry=None`). Non-ASCII hosts are converted with Python's IDNA
+2003 codec, which differs from IDNA 2008 for a few characters such as sharp s.
+
+The rules that need the rest of the cookie store (step 16, a non-secure cookie
+shadowing a secure one, and steps 23 and 24, replacing an old cookie and eviction) are
+left to the caller.
+
+`StoredCookie.is_expired(now)` is true once `now` reaches the expiry. A session cookie
+never expires there: only the caller knows when the session ends.
+`StoredCookie.matches(url)` is the domain, path and Secure check of the retrieval model
+(section 5.8.3); SameSite and the request context are not checked.
+
+## Errors
+
+| Error | When |
+| --- | --- |
+| `CookieError` (a `ValueError`) | A line a user agent ignores, a line that breaks the server grammar in strict mode, a cookie `build` refuses, a URL that `receive` or `matches` cannot use |
+| `TypeError` | An argument of the wrong type (a name that is not a `str`, a flag that is not a `bool`, a `now` that is not a `datetime`, ...) |
+| `ValueError` | A naive `now` given to `receive` or `StoredCookie.is_expired` |
+
+Messages name the rule and, for a bad character, its code point and index. They never
+quote a cookie value, a whole line or a request URL, and other quoted text is cut to 40
+characters, so a message is safe to log.
+
+## Command line
+
+`setcookie [--strict] [--url URL] [--now ISO] [LINE ...]` reads the lines given, or
+stdin. From a header dump (the first non-empty line starts with `HTTP/`) only the
+Set-Cookie fields are read. It prints a JSON array with one entry per line: `line`, then
+`cookie` (the fields of `Cookie`), `stored` with `--url` (the fields of `StoredCookie`)
+or `error`. Dates are ISO 8601. The exit status is 0 when every line was read, 1 when any
+was refused, 2 for a usage error. `--now` defaults to the clock and a time without a zone
+is UTC.
+
+## Moving from 0.2.0
+
+Code that passes the documented types sees the same results. What changed:
+
+- Wrong argument types raise `TypeError` where 0.2.0 raised `CookieError`: catch
+  `TypeError` as well, or fix the call. Flags such as `secure` must be real `bool`s, and
+  `max_age=True` is refused.
+- Error messages are worded differently: they name the code point and index instead of
+  quoting the value. Code that matched on the old text needs the new one.
+- `StoredCookie.is_expired` raises `ValueError` for a naive `now`.
+- `receive` no longer raises `OverflowError` near the end of the calendar.

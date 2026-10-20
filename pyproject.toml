@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "setcookie"
-version = "0.2.0"
+version = "1.0.0"
 description = "Parse, validate and safely build HTTP Set-Cookie headers, typed and zero-dependency, per RFC 6265bis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Javier Lianes", email = "javier@lianes8studio.com" }]
 keywords = ["cookie", "set-cookie", "http", "headers", "rfc6265", "rfc6265bis", "samesite", "partitioned", "chips"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -32,14 +32,15 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest", "build", "twine"]
+dev = ["ruff", "mypy", "pytest", "pytest-timeout", "build", "twine"]
 
 [project.scripts]
 setcookie = "setcookie._cli:main"
 
 [project.urls]
 Homepage = "https://lianes8studio.com"
-Repository = "https://github.com/JaviLianes8/setcookie"
+Source = "https://github.com/JaviLianes8/setcookie"
+Documentation = "https://github.com/JaviLianes8/setcookie/blob/main/GUIDE.md"
 Issues = "https://github.com/JaviLianes8/setcookie/issues"
 Changelog = "https://github.com/JaviLianes8/setcookie/blob/main/CHANGELOG.md"
 LinkedIn = "https://www.linkedin.com/in/jlianes/"
@@ -53,8 +54,9 @@ packages = ["src/setcookie"]
 exclude = [
     ".github",
     "IMPROVEMENTS-round*.md",
-    "tests/upstream/*.txt",
-    "tests/upstream/wpt",
+    "CERT-1.0-*.md",
+    "tests/upstream/*",
+    "!tests/upstream/MANIFEST.json",
 ]
 
 [tool.ruff]
@@ -72,3 +74,4 @@ strict = true
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+timeout = 300

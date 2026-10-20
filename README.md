@@ -1,5 +1,7 @@
 # setcookie
 
+[![Lianes8 Certified](https://lianes8studio.com/certified/lianes8-certified-badge.svg)](https://lianes8studio.com/certified)
+
 Typed Set-Cookie codec for Python: parse one Set-Cookie line the way browsers do, check
 it against the server grammar, build lines that cannot inject headers or break prefix
 rules, and see what a user agent would store. Zero dependencies.
@@ -28,7 +30,9 @@ print(expire("sid"))
 ```
 
 Every argument is checked on its own before it is joined, and anything a user agent
-would drop or misread raises `CookieError` (a `ValueError`):
+would drop or misread raises `CookieError` (a `ValueError`). Its message names the rule
+and the position, never quotes the cookie value, and cuts any other quoted text to 40
+characters, so it can go to a log. An argument of the wrong type raises `TypeError`.
 
 ```python
 from setcookie import CookieError, build
@@ -43,7 +47,7 @@ for name, value, options in [
         build(name, value, **options)
     except CookieError as error:
         print(error)
-# cookie value 'a\r\nSet-Cookie: admin=1' has characters outside cookie-octet; encode it first
+# cookie value has U+000D at index 1, outside cookie-octet; encode it first
 # domain 'example.com; Secure' is not a host name (no leading dot, no port)
 # a __Host- cookie must not have a Domain attribute
 # SameSite=None needs the Secure attribute
@@ -87,7 +91,7 @@ for line in ["sid=a b", "sid=abc; Max-Age=0", "__Secure-id=1", "sid=abc; Path=/;
         parse(line, strict=True)
     except CookieError as error:
         print(error)
-# strict: the cookie-value 'a b' has characters outside cookie-octet
+# strict: the cookie-value has U+0020 at index 1, outside cookie-octet
 # strict: Max-Age='0' is not a non-zero-digit followed by DIGITs
 # strict: a __Secure- cookie needs the Secure attribute
 # strict: the path attribute appears twice
@@ -157,18 +161,39 @@ works too.
 
 ## Why
 
-`http.cookies.SimpleCookie` was written for the old Cookie header, not for one
-Set-Cookie line: it keeps `Expires` as a string, accepts any `SameSite` value, reads an
-unknown attribute such as `Priority=High` as a second cookie, silently drops the whole
-line when it meets a flag it does not know (`Foo`, and `Partitioned` before Python 3.14),
-drops nameless cookies, and
-writes a control character in a value as an octal escape that browsers do not decode.
-`setcookie` follows the current draft step by step, refuses to build what browsers would
-drop, and gives typed results.
+The problem: a Set-Cookie line is easy to write wrong and hard to read right. A value
+with a line break injects a header, a `;` in a Domain smuggles an attribute, a `__Host-`
+cookie with a Domain or a `SameSite=None` cookie without Secure is silently dropped by
+browsers, and the date and attribute rules browsers apply are not the ones most code
+guesses. The alternatives in Python, checked on 2026-10-20:
+
+- `http.cookies.SimpleCookie` (standard library, Python 3.10 to 3.14) was written for the
+  old Cookie header, not for one Set-Cookie line: it keeps `Expires` as a string, keeps
+  any `SameSite` value (`Bogus` is read and written back), reads an unknown attribute such
+  as `Priority=High` as a second cookie, drops the whole line when it meets a flag it does
+  not know (`Foo`, and `Partitioned` before Python 3.14), drops nameless cookies, and
+  writes a control character in a value as an octal escape that browsers do not decode.
+- `werkzeug.http.dump_cookie` (Werkzeug 3.1.9) builds a line but writes a Domain as given,
+  so `domain="ex.com; Secure"` adds a Secure attribute; it writes a `__Host-` cookie with a
+  Domain and `SameSite=None` without Secure (both dropped by browsers), and turns a line
+  break in a value into an octal escape.
+- `http.cookiejar` is a client cookie jar for `urllib`; it does not build lines and has no
+  SameSite, Partitioned or prefix rules.
+
+`setcookie` follows the current draft step by step (it is tested against the draft text,
+the web-platform-tests cases and two JavaScript implementations), refuses to build what
+browsers would drop, and gives typed results. It stays a codec for one line: it is not a
+cookie jar, and it has no runtime dependencies.
+
+## More
+
+- [GUIDE](https://github.com/JaviLianes8/setcookie/blob/main/GUIDE.md): every rule, every
+  error, and what changed since 0.2.0.
+- [CHANGELOG](https://github.com/JaviLianes8/setcookie/blob/main/CHANGELOG.md)
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/JaviLianes8/setcookie/blob/main/LICENSE).
 
 ## Links
 

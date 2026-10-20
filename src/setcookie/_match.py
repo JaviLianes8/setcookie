@@ -6,7 +6,8 @@ import ipaddress
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import urlsplit
 
-from ._errors import CookieError
+from ._chars import shown
+from ._errors import CookieError, type_error
 
 if TYPE_CHECKING:
     from ._model import StoredCookie
@@ -26,19 +27,21 @@ def request_of(url: str) -> Request:
     Non-ASCII hosts go through the standard library's IDNA 2003 codec, which maps a few
     characters (such as sharp s) differently from the IDNA 2008 rules of section 5.1.2.
     """
+    if not isinstance(url, str):
+        raise type_error("url", "a str", url)
     try:
         parts = urlsplit(url)
         host = parts.hostname
     except ValueError as error:
-        raise CookieError(f"the request URL is malformed: {url!r}") from error
+        raise CookieError("the request URL is malformed") from error
     if not host:
-        raise CookieError(f"the request URL has no host: {url!r}")
+        raise CookieError("the request URL has no host")
     try:
         canonical = host.rstrip(".").encode("idna").decode("ascii").lower()
         # A label that claims to be an A-label must decode (section 5.1.2 step 4).
         canonical.encode("ascii").decode("idna")
     except UnicodeError:
-        raise CookieError(f"the request host cannot be canonicalized: {host!r}") from None
+        raise CookieError(f"the request host cannot be canonicalized: {shown(host)}") from None
     return Request(canonical, parts.path, parts.scheme.lower() in _SECURE_SCHEMES)
 
 

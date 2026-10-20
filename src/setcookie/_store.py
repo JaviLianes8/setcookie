@@ -5,14 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
-from ._chars import MAX_AGE_LIMIT, ascii_lower
-from ._errors import CookieError
+from ._chars import MAX_AGE_LIMIT, ascii_lower, shown
+from ._errors import CookieError, type_error
 from ._match import default_path, domain_match, request_of
 from ._model import Cookie, StoredCookie
 from ._parse import parse
 from ._rules import prefix_problem, secure_problem
 
 _EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
+_LATEST = datetime.max.replace(tzinfo=timezone.utc)
 _LIMIT = timedelta(seconds=MAX_AGE_LIMIT)
 
 
@@ -31,9 +32,30 @@ def receive(
     cross-site request that is not a top-level navigation, where only SameSite=None
     cookies may be set. ``is_public_suffix`` enables the public suffix check of step 9.
     Rules that need the existing cookie store (steps 16, 23 and 24) are left to the caller.
+    Arguments of the wrong type raise TypeError and a naive ``now`` raises ValueError.
+
+    >>> from datetime import datetime, timezone
+    >>> now = datetime(2026, 10, 13, tzinfo=timezone.utc)
+    >>> stored = receive("sid=1; Domain=example.com", "https://www.example.com/app/x", now=now)
+    >>> stored.domain, stored.host_only, stored.path, stored.persistent
+    ('example.com', False, '/app', False)
+    >>> receive("sid=1; Secure", "http://www.example.com/", now=now)
+    Traceback (most recent call last):
+    ...
+    setcookie.CookieError: a Secure cookie cannot be set from an insecure URL
     """
-    if now.tzinfo is None:
+    if not isinstance(line, str):
+        raise type_error("line", "a str", line)
+    if not isinstance(url, str):
+        raise type_error("url", "a str", url)
+    if not isinstance(now, datetime):
+        raise type_error("now", "a datetime", now)
+    if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be an aware datetime")
+    if not isinstance(cross_site, bool):
+        raise type_error("cross_site", "a bool", cross_site)
+    if is_public_suffix is not None and not callable(is_public_suffix):
+        raise type_error("is_public_suffix", "a callable or None", is_public_suffix)
     cookie = parse(line)
     request = request_of(url)
     domain, host_only = _domain(cookie, request.host, is_public_suffix)
@@ -75,15 +97,15 @@ def _domain(
 ) -> tuple[str, bool]:
     attribute = cookie.domain or ""
     if not attribute.isascii():
-        raise CookieError(f"the Domain attribute {attribute!r} is not ASCII")
+        raise CookieError(f"the Domain attribute {shown(attribute)} is not ASCII")
     if attribute and is_public_suffix is not None and is_public_suffix(attribute):
         if attribute != host:
-            raise CookieError(f"the Domain attribute {attribute!r} is a public suffix")
+            raise CookieError(f"the Domain attribute {shown(attribute)} is a public suffix")
         attribute = ""
     if not attribute:
         return host, True
     if not domain_match(host, attribute):
-        raise CookieError(f"the host {host!r} does not domain-match {attribute!r}")
+        raise CookieError(f"the host {shown(host)} does not domain-match {shown(attribute)}")
     return attribute, False
 
 
@@ -91,7 +113,15 @@ def _expiry(cookie: Cookie, now: datetime) -> datetime | None:
     if cookie.max_age is not None:
         if cookie.max_age <= 0:
             return _EARLIEST
-        return now + timedelta(seconds=min(cookie.max_age, MAX_AGE_LIMIT))
+        return _later(now, timedelta(seconds=min(cookie.max_age, MAX_AGE_LIMIT)))
     if cookie.expires is not None:
-        return min(cookie.expires, now + _LIMIT)
+        return min(cookie.expires, _later(now, _LIMIT))
     return None
+
+
+def _later(now: datetime, delta: timedelta) -> datetime:
+    """``now + delta``, or the latest representable time when that overflows."""
+    try:
+        return now + delta
+    except OverflowError:
+        return _LATEST
