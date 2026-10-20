@@ -256,3 +256,8 @@ Disputed findings: none.
 Gates at the fix commit on this PC (CPython 3.13.2): `ruff format --check .`,
 `ruff check .`, `mypy --strict src`, `mypy --strict src tests` and `pytest` (543 passed,
 1 skipped: the opt-in e2e test) exit 0.
+
+E2E at 4fd7ae1 (fresh clone from GitHub, this PC on turn pc/3, CPython 3.13.2, fetched
+sources present, `SETCOOKIE_E2E=1` and `SETCOOKIE_E2E_PYPI=1`): 540 passed, 4 skipped
+(the Node.js reference tests, no Node.js in that venv); the wheel, sdist, upgrade from
+PyPI 0.2.0 and the CLI by subprocess all pass with the round 1 fixes.
