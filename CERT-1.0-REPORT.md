@@ -402,4 +402,6 @@ Disputed findings: none.
 Fix commit: the commit that adds this section, on top of 85d1d2a.
 
 Gates at the fix commit: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
-`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest`: GATES_PENDING.
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on the laptop
+(CPython 3.14.6, turn portatil/4, clean clone of fb1580e, fetched sources absent, so
+their tests and the opt-in e2e test skip): 537 passed, 24 skipped.
