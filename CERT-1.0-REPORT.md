@@ -16,7 +16,7 @@ Progress:
 - [ ] Five QA lenses report PASS (item 19)
 - [ ] Independent reviewer reports PASS (item 16)
 - [x] Gates (item 15), author run at 619d73a; final run after the QA lenses
-- [ ] PR and trace guard CLEAN (item 17); merge and publish left to the maintainer
+- [x] PR #3 and trace guard CLEAN (item 17); merge and publish left to the maintainer
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -59,7 +59,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 14 | sdist and wheel contents | PASS |
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | pending |
-| 17 | PR and trace guard | PR from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
+| 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
 | 19 | Five independent QA lenses | pending |
 
