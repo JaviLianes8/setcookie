@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 7: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 8: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -535,4 +535,63 @@ Gates at 5df78c2: `ruff format --check .`, `ruff check .`, `mypy --strict src` a
 `mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
 PC (CPython 3.14.2, turn elena/6, low priority, clean clone of 5df78c2, fetched sources
 absent, so their tests and the opt-in e2e test skip): 784 tests, 761 passed, 23 skipped,
+none failed.
+
+### Round 8
+
+The five lenses ran again against b42791b (the third round of the second full pass).
+Lens b confirmed F1, F2, F3, N1 and N2 fixed and the `"` dispute still valid; lens e
+confirmed all twelve round 7 findings fixed, killed all 16 re-applied mutants, and swept
+33 new probes (21 killed, one equivalent: removing `sys.stderr.flush()`, as stderr is line
+buffered and every message ends in a newline). Every new finding is fixed below; none is
+disputed. Each behaviour fix has a contract in `tests/test_qa8_fixes.py` that failed on
+b42791b first (21 of its 37 cases failed; the 16 that passed pin cases already right or
+the lens e mutants, which pass on b42791b and fail on their mutant). Expected hosts and
+paths were measured on this PC with Node.js 24.18.0 `new URL(...)`. Every behaviour change
+is in the 1.0.0 section of the CHANGELOG and in the GUIDE.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| a, b | A-R3-1, B-N4: the port was never read, so `https://x.com:abc/`, `:99999` and `https://u:p\@x.com/` (authority ending at the backslash, port `p`) gave a host where the URL parser throws | `_url._valid_port`: the port after the host (bracketed or not) must be empty or ASCII digits up to 65535, and anything after `]` must start with `:`; otherwise `CookieError("the request URL is malformed")`. An explicit check, so the rule is the WHATWG one and is pinned by its own mutants. `test_qa8_fixes::test_a_url_with_an_invalid_port_is_malformed` (9 URLs, through `receive` and `matches`, each throws in Node), `test_a_valid_or_empty_port_is_accepted` (empty, 0, 65535, a bracketed host with a port) |
+| b, d | B-N3, D-R2: only leading C0 controls and space were stripped | `str.strip` instead of `lstrip` (constant renamed `_STRIPPED`), before tab, LF and CR are removed, as the WHATWG parser orders it; `test_qa8_fixes::test_c0_controls_and_spaces_are_stripped_at_both_ends` (10 URLs: trailing space, two spaces, U+0001, tab and space, in the host and the path, both ends with NUL), `test_matches_strips_a_trailing_space_of_the_url` |
+| d | R1: `http://[::1]\x` raised `CookieError` because the raw URL went through `urlsplit` before the backslash rewrite | the special scheme is read with a regular expression (`[A-Za-z][A-Za-z0-9+.-]*:`, case folded) and the rewrite runs before the only `urlsplit`; `test_qa8_fixes::test_a_backslash_may_follow_a_bracketed_host` (4 URLs, upper-case scheme included) |
+| e | E1, E2: `http`, `ftp` and `ws` not pinned as special schemes | `test_qa8_fixes::test_every_special_scheme_reads_a_backslash_as_a_slash` (all five schemes, `x.com\a/b` and `x.com\@evil.com/p/q`) |
+| e | E3: the leading strip not pinned | covered by `test_c0_controls_and_spaces_are_stripped_at_both_ends` (leading space and U+0001 before a URL with a backslash) |
+| e | E4: removal of tab, LF and CR not pinned | `test_qa8_fixes::test_tab_and_newlines_are_removed_from_the_scheme` (each inside `https` of a URL with a backslash) |
+| e | E5: the stderr form of several failing lines not pinned | `test_qa8_fixes::test_every_failing_line_gets_its_own_stderr_line` (exact two lines) |
+
+Each mutant applied alone to a scratch copy with bytecode off, against
+`tests/test_qa8_fixes.py` and `tests/test_qa7_fixes.py` on CPython 3.13.2 (this PC):
+
+| Mutant | Caught by |
+| --- | --- |
+| S09 `http` removed from the special schemes | test_qa8_fixes::test_a_backslash_may_follow_a_bracketed_host |
+| S08 `ftp` removed | test_qa8_fixes::test_every_special_scheme_reads_a_backslash_as_a_slash |
+| S11 `ws` removed | test_qa8_fixes::test_every_special_scheme_reads_a_backslash_as_a_slash |
+| S01 space not stripped | test_qa8_fixes::test_c0_controls_and_spaces_are_stripped_at_both_ends |
+| S02 strip removed | test_qa8_fixes::test_c0_controls_and_spaces_are_stripped_at_both_ends |
+| strip back to `lstrip` | test_qa8_fixes::test_c0_controls_and_spaces_are_stripped_at_both_ends |
+| S03, S04, S05 tab, LF or CR kept | test_qa8_fixes::test_tab_and_newlines_are_removed_from_the_scheme |
+| S06 `translate` removed | test_qa8_fixes::test_tab_and_newlines_are_removed_from_the_scheme |
+| port check removed | test_qa8_fixes::test_a_url_with_an_invalid_port_is_malformed |
+| port bound 65536 | test_qa8_fixes::test_a_url_with_an_invalid_port_is_malformed |
+| `isascii` dropped from the port check | test_qa8_fixes::test_a_url_with_an_invalid_port_is_malformed |
+| scheme compared without case folding | test_qa8_fixes::test_a_backslash_may_follow_a_bracketed_host |
+| C04 newline dropped from each stderr message | test_qa8_fixes::test_every_failing_line_gets_its_own_stderr_line |
+| C07 only the first failure reported | test_qa8_fixes::test_every_failing_line_gets_its_own_stderr_line |
+
+One mutant survives on 3.13 and is equivalent there: dropping the check that only `:`
+may follow `]`. On 3.11.4 and later `urlsplit` itself refuses `[::1]x`; the check is kept
+for 3.10, where it is the only guard (checked on CPython 3.10.19: `http://[::1]x/`,
+`http://[::1]:abc/`, `:+1`, a non-ASCII digit, `:65536` and `https://u:p\@x.com/` all
+raise `CookieError`, while `http://[::1]\x/y` and a trailing space read as in Node).
+
+Disputed findings: none.
+
+Fix commit: 52d298f, on top of b42791b.
+
+Gates at 52d298f: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
+PC (CPython 3.14.2, turn elena/8, low priority, clean clone of 52d298f, fetched sources
+absent, so their tests and the opt-in e2e test skip): 823 tests, 800 passed, 23 skipped,
 none failed.
