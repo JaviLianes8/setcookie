@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 11: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 12: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -767,3 +767,46 @@ opt-in e2e test skip): 862 passed and 24 skipped, none failed, on CPython 3.14.2
 on CPython 3.10.19. The URL test files (`test_qa6` to `test_qa11`, the pins,
 `test_store`, `test_wpt`, `test_contract_edges`, 383 tests) also pass on CPython 3.11.5 and
 3.13.2 on this PC.
+
+### Round 12
+
+Lens e ran again against 37a5067 (the seventh round of the second full pass). It confirmed
+F10, F11 and F12 fixed: all 14 repro URLs give the expected result through `request_of`
+and `receive` on CPython 3.10.19, 3.11.5 and 3.13.2. It swept 35 mutants of the changed
+`request_of` code and of `_SCHEME` on Elena's PC (862 passed, 23 skipped at baseline on
+3.10.19, 3.11.5 and 3.14.2): 19 were killed, 13 were equivalent (by argument and by 0
+differences in 60 000 seeded URLs on each version), and the three survivors are pinned
+below. None is a behaviour change: the code already gave the expected result on every
+version, so `src` and the CHANGELOG are unchanged and the new contracts pass on the
+current code. They were proven to bite by applying each surviving mutant alone. None is
+disputed. Every contract is in `tests/test_qa12_fixes.py`. Node.js 24.18.0
+`new URL(...)` on this PC throws `ERR_INVALID_URL` for each of the 15 URLs.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| e | F13: a prefix that starts with `0` not pinned on Python 3.10 (N04, the first-character class without `0`) | `test_a_prefix_that_starts_with_zero_has_no_host`: `0http://x.com/a`, `0a://u@x.com/a`, `0://x.com/a` and `0.0://1.2.3.4/a` give `has no host` through `request_of` and `receive` |
+| e | F14: C0 controls or spaces before such a prefix not pinned on Python 3.10 (N11, the early check run before the strip) | `test_a_prefix_after_stripped_characters_has_no_host`: ` 1http://x.com/a`, `\t1http://x.com/a`, `\t1http://[/a`, `\x001http://[/a`, ` 1http://[/a`, ` +a://x[/a` and `\n-a://[/a` give `has no host` through `request_of` and `receive` |
+| e | F15: an empty host with an invalid port not pinned (N18, the port checked only when there is a host) | `test_an_invalid_port_without_a_host_is_malformed`: `http://:99999/a`, `foo://:99999/a`, `http://u@:99999/a` and `https://:abc/a` give `the request URL is malformed` through `request_of`, `receive` and `matches`. The port is checked before the host, so `malformed` is the promise, as it was |
+
+Each mutant was applied alone to a copy of the fix commit with bytecode off and run
+against `tests/test_qa12_fixes.py` on this PC:
+
+| Mutant | 3.10.19 | 3.11.5 | 3.13.2 |
+| --- | --- | --- | --- |
+| none (control) | 15 passed | 15 passed | 15 passed |
+| N04: `[0-9+.-]` to `[1-9+.-]` | killed (4) | equivalent | equivalent |
+| N11: early check before the strip | killed (7) | equivalent | equivalent |
+| N18: port checked only with a host | killed (4) | killed (4) | killed (4) |
+
+On 3.11 and later `urlsplit` takes no scheme that starts with anything but a letter, so
+N04 and N11 only change 3.10, as the lens reported.
+
+Disputed findings: none.
+
+Fix commit: 87a43ee, on top of 37a5067.
+
+Gates at 87a43ee: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2). `pytest` exits 0 on Elena's
+PC (turn elena/6, clean clone of 87a43ee, fetched sources absent, so their tests and the
+opt-in e2e test skip): 877 passed and 24 skipped, none failed, on CPython 3.14.2 and again
+on CPython 3.10.19.
