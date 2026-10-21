@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 10: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 11: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -709,3 +709,61 @@ PC (CPython 3.14.2, turn elena/7, clean clone of 379fd58, fetched sources absent
 tests and the opt-in e2e test skip): 872 tests, 848 passed, 24 skipped, none failed. The
 URL test files (`test_qa6` to `test_qa10`, the pins, `test_store`, `test_wpt`,
 `test_contract_edges`, 369 tests) also pass on CPython 3.10.19 and 3.11.5 on this PC.
+
+### Round 11
+
+Lens e ran again against 53b2d88 (the sixth round of the second full pass). It confirmed
+F4 to F9 fixed on CPython 3.10.19, 3.11.5 and 3.13.2 and killed the re-applied S06 to S10
+and S25 (on 3.11.5). It also showed S16 and S17 equivalent (0 differences in 60 000 seeded
+URLs on each version). It swept 28 new probes on the hostless rule and on `_SCHEME`: 19
+were killed, five were equivalent, and the three survivors are fixed below. None is
+disputed. F10 is a behaviour change on Python 3.10 only, listed in the 1.0.0 section of
+the CHANGELOG and in the GUIDE. Every contract is in `tests/test_qa11_fixes.py`.
+Node.js 24.18.0 `new URL(...)` on this PC throws for every refused URL and gives the host
+`x.com` and the path `/a` for both accepted ones.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| e | F10: on Python 3.10, `urlsplit` raised `Invalid IPv6 URL` for a URL such as `1http://[/a` or `+a://x[/a` before the hostless rule ran, so it gave `the request URL is malformed` where 3.11 and later give `has no host`; S28 survived the 3.10 suite | `_url.request_of` now decides before `urlsplit` that a URL starting with a digit, `+`, `-` or `.` (after the ends are stripped) has no host. The rule that compared the scheme from `urlsplit` with the scheme expression is removed: such a URL never gets a host on any version, because `urlsplit` needs a scheme or a leading `//` to read an authority. `test_a_prefix_that_is_not_a_scheme_has_no_host`: `1http://[/a`, `+a://x[/a`, `9a://[@?q`, `1http://]/a`, `-a://u@[x/a`, `.a://[::1/a`, `1http://[x]/a`, `1http://[::1]x/a`, through `request_of` and `receive`. On 3.10.19, all eight failed on 53b2d88 first (`malformed`) |
+| e | F11: a one-letter scheme not pinned (H23) | `test_a_scheme_may_be_one_letter`: `a://x.com/a` and `A://u@x.com/a` give `x.com` and `/a` through `request_of`, `receive` and `matches` |
+| e | F12: a prefix starting with `-` or `.` not pinned on 3.10 (H28) | the same refused-URL test also covers `-a://x.com/a`, `.a://u@x.com/a`, `-://x.com/a` and `.://x.com/a` |
+
+Each mutant was applied alone to a copy of f9eecd7 with bytecode off. It ran against
+`tests/test_qa11_fixes.py`, `test_qa10_fixes.py`, `test_qa9_fixes.py`, `test_qa8_fixes.py`,
+`test_qa7_fixes.py`, `test_qa7_pins.py` and `test_hostile.py` on CPython 3.10.19, 3.11.5 and
+3.13.2 on this PC (single files, under a second per run):
+
+| Mutant | 3.10.19 | 3.11.5 | 3.13.2 |
+| --- | --- | --- | --- |
+| early hostless check removed | killed | equivalent | equivalent |
+| H28: `-` and `.` dropped from the first-character class | killed | equivalent | equivalent |
+| digit dropped from the class | killed | equivalent | equivalent |
+| `+` dropped | killed | equivalent | equivalent |
+| `.` dropped | killed | equivalent | equivalent |
+| `-` dropped | killed | equivalent | equivalent |
+| letters added to the class | killed | killed | killed |
+| class searched, not matched | killed | killed | killed |
+
+On 3.11 and later, `urlsplit` itself takes no scheme that starts with anything but a letter,
+so the early check only changes 3.10. Three mutants are now equivalent on every version.
+Each gave 0 differences in 60 000 seeded URLs on 3.10.19, 3.11.5 and 3.13.2; a
+control mutant (the early check removed) gave 25 on 3.10.19:
+
+- S28 (the userinfo scheme may start with a digit): every URL it changes now stops at the
+  early check.
+- H23 (a scheme needs two characters): `_SCHEME` now only finds the five special schemes,
+  and none of them has one letter. The new accept cases still pin the behaviour.
+- The first-character class extended to `[0-9+.-][A-Za-z0-9+.-]*:`: this is the reason the
+  rule is written as one character.
+
+Disputed findings: none.
+
+Fix commit: f9eecd7, on top of 53b2d88.
+
+Gates at f9eecd7: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2). `pytest` exits 0 on Elena's
+PC (turn elena/9, clean clone of f9eecd7, fetched sources absent, so their tests and the
+opt-in e2e test skip): 862 passed and 24 skipped, none failed, on CPython 3.14.2 and again
+on CPython 3.10.19. The URL test files (`test_qa6` to `test_qa11`, the pins,
+`test_store`, `test_wpt`, `test_contract_edges`, 383 tests) also pass on CPython 3.11.5 and
+3.13.2 on this PC.
