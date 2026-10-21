@@ -523,6 +523,10 @@ CPython 3.13.2 (this PC):
 | stderr guard removed | test_qa7_fixes::test_a_closed_stderr_leaves_the_json_on_stdout_intact |
 | status for a closed stdout removed | test_qa7_fixes::test_a_closed_stdout_stops_without_a_traceback |
 
+One earlier test asserted the old IPv6 form: `test_qa_fixes::test_names_with_digits_that_are_not_numbers_stay_host_names`
+expected `::ffff:1.2.3.4` for `[::ffff:1.2.3.4]`; it now expects `::ffff:102:304`, the
+form Node gives.
+
 Disputed findings: none.
 
 Fix commit: the commit that adds this section, on top of e5cb908.

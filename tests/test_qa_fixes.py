@@ -94,7 +94,8 @@ def test_names_with_digits_that_are_not_numbers_stay_host_names() -> None:
     assert receive("a=1", "http://x.0xg/", now=NOW).domain == "x.0xg"
     assert receive("a=1", "http://x.1a/", now=NOW).domain == "x.1a"
     assert receive("a=1", "http://example.1e/", now=NOW).domain == "example.1e"
-    assert receive("a=1", "http://[::ffff:1.2.3.4]/", now=NOW).domain == "::ffff:1.2.3.4"
+    # The WHATWG IPv6 serializer writes the mapped IPv4 part in hexadecimal pieces.
+    assert receive("a=1", "http://[::ffff:1.2.3.4]/", now=NOW).domain == "::ffff:102:304"
 
 
 def test_a_punycode_label_too_large_to_decode_raises_cookie_error() -> None:
