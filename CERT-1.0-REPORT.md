@@ -13,9 +13,9 @@ Progress:
 - [x] Contract, fuzz and author mutation round (items 6, 9, 18)
 - [x] Docs: README, GUIDE, CHANGELOG (items 11, 12)
 - [x] Packaging, e2e and upgrade from PyPI 0.2.0, every Python (items 8, 10, 13, 14)
-- [ ] Five QA lenses report PASS (item 19)
-- [ ] Independent reviewer reports PASS (item 16)
-- [x] Gates (item 15), author run at 619d73a; final run after the QA lenses
+- [x] Five QA lenses report PASS (item 19)
+- [x] Independent reviewer reports PASS (item 16)
+- [x] Gates (item 15), author run at 619d73a; final run on a fresh clone after the QA lenses
 - [x] PR #3 and trace guard CLEAN (item 17); merge and publish left to the maintainer
 
 ## Baseline on 0.2.0 (before any change)
@@ -58,10 +58,10 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 13 | pyproject 1.0.0, Production/Stable | PASS |
 | 14 | sdist and wheel contents | PASS |
 | 15 | Gates each exit 0 | PASS: see Gates |
-| 16 | Independent reviewer | pending |
+| 16 | Independent reviewer | PASS: round 1 at 50d92f9, every item PASS (see Independent review) |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 12: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | PASS: all five lenses report PASS after rounds 1 to 12, every finding fixed or disputed with evidence (see QA verdicts) |
 
 ## API review (item 1)
 
@@ -205,6 +205,54 @@ the full suite run with `-x` and a 300 s per-test limit.
 At 619d73a on this PC, each command on its own: `ruff format --check .`,
 `ruff check .`, `mypy --strict src`, `mypy --strict src tests` and `pytest` (504 passed,
 1 skipped: the opt-in e2e test, which passed on the laptop) all exit 0.
+
+## QA verdicts (item 19)
+
+Each lens re-ran its own earlier findings on its own fresh clone until it found nothing
+new. Report paths are relative to the certification scratch folder, which is not
+committed.
+
+| Lens | Rounds | Final verdict | Report | Commit |
+| --- | --- | --- | --- | --- |
+| a. API and docs | 4 | PASS | `setcookie-cert/lens-a-r4/REPORT.md` | cb6915d1521c0c1dbd1976e4ce40725c80c40442 |
+| b. Correctness and ground truth | 4 | PASS (the `"` in a host stays disputed: Node.js accepts it) | `setcookie-cert/lens-b-r4/REPORT.md` | cb6915d1521c0c1dbd1976e4ce40725c80c40442 |
+| c. Adversarial and robustness | 3 | PASS | `setcookie-cert/lens-c-r3/REPORT.md` | b42791b605c2bf6180349a1778d65abbf8a3bd81 |
+| d. Packaging and real e2e | 5 | PASS | `setcookie-cert/lens-d-r5/REPORT.md` | 072c242926f3f046df2df6d8cc908759a4d29589 |
+| e. Contract strength | 8 | PASS | `setcookie-cert/lens-e-r8/probes` | 50d92f9ec6974c0ad3f996fc2898090bbf87f668 |
+
+Lens e round 8 left its probes and logs rather than a written report: N04, N11, N18 and
+P01 to P08 against the full suite on three interpreters, and 60 000 seeded URLs per
+version on 3.10.19, 3.11.5 and 3.14.2. Every mutant is killed except P07, which is killed
+on 3.11.5 by `test_qa8_fixes::test_a_url_with_an_invalid_port_is_malformed[http://[::1]x/]`
+and equivalent on 3.10.19 and 3.13.2, where `urlsplit` refuses that authority itself. The
+independent reviewer checked this again.
+
+## Independent review (item 16)
+
+Round 1, a fresh clone at 50d92f9 (Elena's PC for the full suite, this PC for the
+interpreter matrix). Verdict: PASS, every item below PASS.
+
+| # | Item | Result |
+| --- | --- | --- |
+| 1 | API stable | PASS: nine names, signatures as documented, every change against 0.2.0 in the CHANGELOG, pinned by `test_contract_api.py` |
+| 2 | `__all__` exact, no private imports in docs | PASS |
+| 3 | Docstrings with runnable examples, doctests | PASS |
+| 4 | Typed end to end | PASS: `mypy --strict src` and `mypy --strict src tests`, `py.typed` in the wheel |
+| 5 | Typed, bounded errors | PASS: messages of 50 to 117 characters for an 11 000 character value, no value or URL quoted |
+| 6 | Contract of every public name | PASS: 902 passed, 0 skipped on Elena's PC with sources, references and e2e on |
+| 7 | Real ground truth | PASS: the ten manifest files fetched again, sizes and sha256 match; undici and tough-cookie run live |
+| 8 | Real e2e | PASS: wheel in a fresh venv, PyPI 0.2.0 upgraded in place, console script and `python -m` |
+| 9 | Seeded fuzz, no crash, hang or blowup | PASS: own 100k against 400k character probes, ratios 3.5 to 4.2 |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.11.14, 3.12.12, 3.13.2, 3.14.2, 3.14.2t |
+| 11 | README renders, honest why | PASS: `twine check --strict`, absolute links, comparison claims run again |
+| 12 | Dated CHANGELOG 1.0.0 | PASS |
+| 13 | pyproject | PASS |
+| 14 | sdist and wheel contents | PASS |
+| 15 | Gates exit 0 on their own | PASS |
+| 16 | Independent reviewer | PASS |
+| 17 | PR and trace guard | PASS: PR #3 open, trace guard CLEAN; merge and publish left to the maintainer |
+| 18 | Contracts bite (mutations) | PASS: three author mutants applied again and killed; lens e P07 as above |
+| 19 | Five QA lenses PASS | PASS |
 
 ## QA lenses (item 19)
 
