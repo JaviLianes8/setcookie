@@ -11,6 +11,11 @@ from ._chars import shown
 from ._errors import CookieError, type_error
 
 _SECURE_SCHEMES = frozenset({"https", "wss"})
+# The special schemes of the WHATWG URL Standard that have a host (``file`` aside).
+_SPECIAL_SCHEMES = frozenset({"ftp", "http", "https", "ws", "wss"})
+# What urlsplit strips or removes first, as the WHATWG URL parser does.
+_LEADING = "".join(chr(code) for code in range(0x21))
+_REMOVED = str.maketrans("", "", "\t\n\r")
 # The forbidden domain code points of the WHATWG URL Standard.
 _FORBIDDEN = frozenset(chr(code) for code in range(0x20)) | frozenset(" #%/:<>?@[\\]^|\x7f")
 # The path percent-encode set; every code point above U+007E is encoded as well.
@@ -36,13 +41,19 @@ def request_of(url: str) -> Request:
     Standard. A trailing dot is kept, so ``example.com.`` is a host of its own as in
     browsers, and a host whose last label is a number is read as an IPv4 address the way
     the WHATWG URL parser reads it (``127.1`` is ``127.0.0.1``). The path is percent-encoded
-    and its dot segments resolved as that parser does.
+    and its dot segments resolved as that parser does. In an ``http``, ``https``, ``ws``,
+    ``wss`` or ``ftp`` URL a backslash in the authority or path reads as a slash and any
+    number of slashes may follow the scheme, as in that parser. A bracketed host must be an
+    IPv6 address without a zone ID and is serialized as that parser does (``[0:0::1]`` is
+    ``::1``).
     """
     if not isinstance(url, str):
         raise type_error("url", "a str", url)
-    url = str.__str__(url)
+    url = str.__str__(url).lstrip(_LEADING).translate(_REMOVED)
     try:
         parts = urlsplit(url)
+        if parts.scheme in _SPECIAL_SCHEMES:
+            parts = urlsplit(_special(url, len(parts.scheme)))
         host = parts.hostname
     except ValueError as error:
         raise CookieError("the request URL is malformed") from error
@@ -50,13 +61,39 @@ def request_of(url: str) -> Request:
         raise CookieError("the request URL has no host")
     try:
         if parts.netloc.rpartition("@")[2].startswith("["):
-            ipaddress.IPv6Address(host)  # a bracketed host must be an IPv6 address
-            canonical = host
+            canonical = _ipv6(host)
         else:
             canonical = _domain(host)
     except (ValueError, OverflowError):
         raise CookieError(f"the request host cannot be canonicalized: {shown(host)}") from None
     return Request(canonical, _path(parts.path), parts.scheme.lower() in _SECURE_SCHEMES)
+
+
+def _special(url: str, length: int) -> str:
+    """The URL with ``//`` after the scheme and a slash for every backslash."""
+    # The parser keeps a backslash of the query or fragment, but neither reaches the host
+    # or the path, so every backslash can be read as a slash.
+    rest = url[length + 1 :].replace("\\", "/").lstrip("/")
+    return f"{url[:length]}://{rest}"
+
+
+def _ipv6(host: str) -> str:
+    """The WHATWG IPv6 serializer: lower-case pieces, the first longest zero run compressed."""
+    if "%" in host:  # a zone ID: the URL parser refuses it
+        raise ValueError("an IPv6 host has a zone ID")
+    packed = ipaddress.IPv6Address(host).packed
+    pieces = [f"{packed[index] << 8 | packed[index + 1]:x}" for index in range(0, 16, 2)]
+    start, size, run = 0, 1, 0
+    for index, piece in enumerate([*pieces, "end"]):
+        if piece == "0":
+            run += 1
+        else:
+            if run > size:
+                start, size = index - run, run
+            run = 0
+    if size == 1:
+        return ":".join(pieces)
+    return ":".join(pieces[:start]) + "::" + ":".join(pieces[start + size :])
 
 
 def _domain(host: str) -> str:

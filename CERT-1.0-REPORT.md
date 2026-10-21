@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 6: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 7: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -464,3 +464,65 @@ and `mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits
 Elena's PC (CPython 3.14.2, turn elena/5, low priority, clean clone of 8fa92b2, fetched
 sources absent, so their tests and the opt-in e2e test skip): 731 tests, 708 passed,
 23 skipped, none failed.
+
+### Round 7
+
+The five lenses ran again against e5cb908 (the second round of the second full pass).
+Lens b confirmed its round 6 findings F1, F2 and F3 fixed and the `"` dispute valid; lens
+d confirmed its F1 fixed, the packaging and the PyPI upgrade, and 726 passed on six
+interpreters. Every new finding is fixed below; none is disputed. Each behaviour fix has a
+contract in `tests/test_qa7_fixes.py` that failed on e5cb908 first (27 of its 32 cases
+failed; the 5 that passed pin cases already right: a backslash in the query, a backslash
+in a URL of another scheme, `[::]`, `[2001:DB8::]` and `[1:2:3:4:5:6:7:8]`). The lens e
+findings that only asked for a missing contract got a test in `tests/test_qa7_pins.py`
+that passes on e5cb908 and fails on its mutant. The expected hosts and paths were measured with Node.js 24.18.0
+`new URL(...)`, which follows the WHATWG URL parser. Every behaviour change is in the
+1.0.0 section of the CHANGELOG and in the GUIDE.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| a, b | A-N1, B-N1: a backslash in a special URL was kept, so `https://x.com\@evil.com/p/q` gave the host `evil.com` and `/a\b/c` the path `/a\b` | for `http`, `https`, `ws`, `wss` and `ftp`, `_url.request_of` reads every backslash as a slash and skips any slashes after the scheme before `urlsplit`, as the parser's special authority states do (`https:x.com` and `https:///x.com` now have the host `x.com`, as in Node); other schemes keep the backslash; docstring and GUIDE; `test_qa7_fixes::test_a_backslash_is_a_slash_in_a_special_url` (11 URLs), `test_a_backslash_is_kept_in_a_url_of_another_scheme`, `test_matches_reads_a_backslash_as_a_slash` |
+| b, c, d | B-N2, C-N1, D-N3: a bracketed IPv6 host was stored as written and a zone ID (any characters, any length) was accepted | `_url._ipv6` refuses any `%` in the brackets and serializes the address as the WHATWG IPv6 serializer does (lower-case pieces, first longest zero run of two or more compressed, IPv4-mapped in hex pieces); `test_qa7_fixes::test_an_ipv6_host_is_serialized_as_a_url_parser_does` (10 spellings, each checked in Node), `test_spellings_of_one_ipv6_address_match_each_other`, `test_an_ipv6_zone_id_is_refused` (`%25eth0`, `%eth0`, NUL, space and `<>`, through `receive` and `matches`), `test_a_huge_ipv6_zone_id_is_refused` |
+| d | D-N1: with stderr closed the error lines landed in stdout after the JSON | `_cli.main` writes the error lines only when `sys.stderr` is not None; GUIDE; `test_qa7_fixes::test_a_closed_stderr_leaves_the_json_on_stdout_intact` |
+| d | D-N2: with stdout closed, `AttributeError` traceback | `_cli.main` skips the JSON when `sys.stdout` is None and returns 141 as for a closed pipe, still writing error lines to stderr; GUIDE; `test_qa7_fixes::test_a_closed_stdout_stops_without_a_traceback`, `test_a_closed_stdout_still_reports_failures_on_stderr` |
+| e | N25: a bracketed host need not be IPv6 | `test_qa7_pins::test_a_bracketed_host_must_be_an_ipv6_address` (`[v1.abc]`, `[v7.x-y]`) |
+| e | N27: the ideographic label separators not pinned | `test_qa7_pins::test_an_ideographic_full_stop_separates_labels_for_the_dns_bound` (U+3002, U+FF0E, U+FF61, labels of 40) |
+| e | N38: lone surrogate to U+FFFD not pinned | `test_qa7_pins::test_a_lone_surrogate_in_the_path_becomes_the_replacement_character` |
+| e | N24: `str.__str__` on the URL not pinned | `test_qa7_pins::test_a_str_subclass_cannot_redirect_the_request_url` (`receive` and `matches`) |
+| e | N28: the 253 bound not pinned at its edge | `test_qa7_pins::test_the_host_length_bound_is_253_characters` (253 kept, 254 refused) |
+| e | N29: the label bound before IDNA not pinned | `test_qa7_pins::test_the_label_bound_applies_before_idna_mapping` (63 `a` plus U+00AD) |
+| e | N35: a final `.` or `..` segment becoming empty not observable | `test_qa7_pins::test_a_final_dot_segment_of_the_request_path_is_empty` (through `matches` and the default path) |
+| e | N37: `~` left unencoded not pinned | `test_qa7_pins::test_a_tilde_is_not_encoded_in_the_path` |
+| e | N40: not every `..` spelling pinned | `test_qa7_pins::test_every_spelling_of_a_double_dot_segment_is_resolved` (7 spellings) |
+| e | N11: the flush inside the try not pinned | `test_qa7_pins::test_a_closed_output_pipe_stops_quietly_after_one_short_line` |
+| e | N13: the stderr redirect of `_closed_pipe` not pinned | `test_qa7_pins::test_a_closed_error_pipe_stops_quietly` |
+| e | N09: an OSError other than a closed pipe swallowed | `test_qa7_pins::test_an_output_error_other_than_a_closed_pipe_propagates` (ENOSPC) |
+
+Each mutant applied alone to a scratch copy with bytecode off, against
+`tests/test_qa7_pins.py`, `tests/test_qa7_fixes.py` and `tests/test_qa6_fixes.py` on
+CPython 3.13.2 (this PC):
+
+| Mutant | Caught by |
+| --- | --- |
+| N25 bracketed host stored as written | test_qa7_pins::test_a_bracketed_host_must_be_an_ipv6_address |
+| N27 `_DOTS` reduced to `.` | test_qa7_pins::test_an_ideographic_full_stop_separates_labels_for_the_dns_bound |
+| N38 lone surrogate not replaced | test_qa7_pins::test_a_lone_surrogate_in_the_path_becomes_the_replacement_character |
+| N24 `str.__str__` dropped | test_qa7_pins::test_a_str_subclass_cannot_redirect_the_request_url |
+| N28 `> 253` to `> 254` | test_qa7_pins::test_the_host_length_bound_is_253_characters |
+| N29 `> 63` to `> 64` | test_qa7_pins::test_the_label_bound_applies_before_idna_mapping |
+| N35 final dot segment kept | test_qa7_pins::test_a_final_dot_segment_of_the_request_path_is_empty |
+| N37 `<= "~"` to `< "~"` | test_qa7_pins::test_a_tilde_is_not_encoded_in_the_path |
+| N40 `%2e.` removed | test_qa7_pins::test_every_spelling_of_a_double_dot_segment_is_resolved |
+| N11 flush in the try removed | test_qa7_pins::test_a_closed_output_pipe_stops_quietly_after_one_short_line |
+| N13 `_closed_pipe` redirects stdout only | test_qa7_pins::test_a_closed_error_pipe_stops_quietly |
+| N09 every OSError returns 141 | test_qa7_pins::test_an_output_error_other_than_a_closed_pipe_propagates |
+| backslash not read as a slash | test_qa7_fixes::test_a_backslash_is_a_slash_in_a_special_url |
+| slashes after the scheme not skipped | test_qa7_pins::test_a_bracketed_host_must_be_an_ipv6_address (no host), test_qa7_fixes::test_a_backslash_is_a_slash_in_a_special_url |
+| zone ID check removed | test_qa7_fixes::test_an_ipv6_zone_id_is_refused |
+| last instead of first longest zero run | test_qa7_fixes::test_an_ipv6_host_is_serialized_as_a_url_parser_does |
+| stderr guard removed | test_qa7_fixes::test_a_closed_stderr_leaves_the_json_on_stdout_intact |
+| status for a closed stdout removed | test_qa7_fixes::test_a_closed_stdout_stops_without_a_traceback |
+
+Disputed findings: none.
+
+Fix commit: the commit that adds this section, on top of e5cb908.

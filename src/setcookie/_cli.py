@@ -114,14 +114,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     reports = [_report(line, options) for line in lines]
     failures = [entry["error"] for entry, ok in reports if not ok]
     try:
-        json.dump([entry for entry, _ in reports], sys.stdout, indent=2)
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-        for reason in failures:
-            print(f"setcookie: {reason}", file=sys.stderr)
+        # A closed descriptor leaves its stream None: print would fall back to stdout.
+        if sys.stdout is not None:
+            json.dump([entry for entry, _ in reports], sys.stdout, indent=2)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        if sys.stderr is not None:
+            for reason in failures:
+                sys.stderr.write(f"setcookie: {reason}\n")
+            sys.stderr.flush()
     except OSError as error:
         if not _closed_pipe(error):
             raise
+        return SIGPIPE_STATUS
+    if sys.stdout is None:  # the report could not be written, as with a closed pipe
         return SIGPIPE_STATUS
     return 1 if failures else 0
 

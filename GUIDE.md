@@ -128,6 +128,19 @@ forbidden domain code point of the WHATWG URL Standard: a C0 control, space, `#`
 IPv6 literal the address must be valid instead). Any of these raises `CookieError`.
 Other characters that URL parsers accept, such as `_` and `"`, are kept.
 
+The host inside brackets must be an IPv6 address without a zone ID (`[fe80::1%25eth0]`
+raises `CookieError`, as URL parsers refuse it), and it is written the way the WHATWG URL
+Standard serializes it: lower-case hexadecimal pieces with the first longest run of zero
+pieces compressed, an IPv4-mapped address included. `[0:0::1]` and `[0000::0001]` are
+both the host `::1`, so a cookie of one matches the other, and `[::FFFF:1.2.3.4]` is
+`::ffff:102:304`. The cookie domain holds the address without its brackets.
+
+In an `http`, `https`, `ws`, `wss` or `ftp` URL a backslash reads as a slash, and any
+number of slashes or backslashes may follow the scheme, as in that parser:
+`https://x.com\@evil.com/p` has the host `x.com` and the path `/@evil.com/p`,
+`https://x.com/a\b/c` has the path `/a/b/c`, and `https:x.com/a` has the host `x.com`.
+In a URL of any other scheme the backslash is kept as it is.
+
 The request path is normalized the way that parser does it before it gives the default
 path or is matched: spaces, double quotes, `<`, `>`, `^`, backquotes, braces, controls
 and non-ASCII characters are percent-encoded as UTF-8, existing `%XX` escapes are kept,
@@ -183,8 +196,9 @@ entry per line: `line`, then `cookie` (the fields of `Cookie`), `stored` with `-
 (the fields of `StoredCookie`) or `error`. Dates are ISO 8601. The exit status is 0 when
 every line was read, 1 when any was refused, 2 for a usage error, such as no line given
 and nothing on stdin (empty or closed), and 141 when the reader of the output closed it
-early (`| head`): the command then stops without a traceback, as a tool killed by SIGPIPE
-does. `--now` defaults to the clock and a time without a zone is UTC. A field name
+early (`| head`) or stdout is closed (`>&-`): the command then stops without a traceback,
+as a tool killed by SIGPIPE does. With stderr closed (`2>&-`) the error lines are dropped
+and stdout holds only the JSON. `--now` defaults to the clock and a time without a zone is UTC. A field name
 followed by spaces or tabs before its colon (`Set-Cookie : a=1`) is still read as a
 Set-Cookie field, although RFC 9112 forbids that whitespace.
 
@@ -212,6 +226,11 @@ extension names and command line input. What changed:
   host as the cookie domain.
 - The request path is percent-encoded and its dot segments resolved before the default
   path is taken and before `matches` compares it, as browsers do.
+- In an `http`, `https`, `ws`, `wss` or `ftp` request URL a backslash reads as a slash
+  (0.2.0 kept it, so `https://x.com\@evil.com/` gave the host `evil.com`), and
+  `https:x.com` has a host.
+- An IPv6 request host is stored in its compressed form (`::1` for `[0:0::1]`), and one
+  with a zone ID raises `CookieError`.
 - `is_public_suffix` gets the Domain without a trailing dot.
 - `build` writes the plain value of a `str` or `int` subclass, so an Enum member gives
   its value instead of its name.

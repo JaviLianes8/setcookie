@@ -74,8 +74,19 @@ Every change against 0.2.0 is listed here; the
   text it holds, so a subclass cannot hide a control character from the checks.
 - `StoredCookie.is_expired` is true at any `now` for a Max-Age of zero or less, also for
   an aware `now` in year 1 whose UTC instant is earlier than the stored expiry.
+- In an `http`, `https`, `ws`, `wss` or `ftp` request URL a backslash reads as a slash
+  and any number of slashes may follow the scheme, as the WHATWG URL parser reads them:
+  `https://x.com\@evil.com/p` has the host `x.com` (0.2.0 read `evil.com`),
+  `https://x.com/a\b/c` the path `/a/b/c`, and `https:x.com/a` the host `x.com` (0.2.0
+  raised `CookieError`).
+- A bracketed IPv6 request host is serialized as the WHATWG URL Standard does it
+  (`[0:0::1]` is `::1`, `[::FFFF:1.2.3.4]` is `::ffff:102:304`), so spellings of one
+  address match each other, and a host with a zone ID (`[fe80::1%25eth0]`) raises
+  `CookieError` instead of becoming the cookie domain.
 - The command line stops without a traceback, with status 141, when the reader closes
-  its output early (`| head`), and its usage line reads `[--now ISO] [LINE ...]`.
+  its output early (`| head`) or stdout is closed, and its usage line reads
+  `[--now ISO] [LINE ...]`. With stderr closed it drops the error lines instead of
+  writing them into the JSON on stdout.
 - Development status is Production/Stable.
 
 ### Added
