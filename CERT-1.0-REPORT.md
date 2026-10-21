@@ -206,6 +206,15 @@ At 619d73a on this PC, each command on its own: `ruff format --check .`,
 `ruff check .`, `mypy --strict src`, `mypy --strict src tests` and `pytest` (504 passed,
 1 skipped: the opt-in e2e test, which passed on the laptop) all exit 0.
 
+Final run on 2026-10-21, a fresh clone of `release/1.0.0` from GitHub at bd33d9c (this PC,
+CPython 3.13.2, fetched sources absent): `ruff format --check .`, `ruff check .`,
+`mypy --strict src` and `pytest` each exit 0. `python -m build` writes
+`setcookie-1.0.0.tar.gz` and `setcookie-1.0.0-py3-none-any.whl`, and
+`twine check --strict` passes both. The wheel installed into a throwaway venv imports from
+its site-packages as version 1.0.0, and the sdist's suite with `src` removed runs against
+it: 879 passed, 23 skipped (the fetched sources, the Node.js references and the opt-in e2e
+test), none failed. Commits after bd33d9c change this report only.
+
 ## QA verdicts (item 19)
 
 Each lens re-ran its own earlier findings on its own fresh clone until it found nothing
