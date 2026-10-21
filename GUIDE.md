@@ -138,8 +138,16 @@ both the host `::1`, so a cookie of one matches the other, and `[::FFFF:1.2.3.4]
 In an `http`, `https`, `ws`, `wss` or `ftp` URL a backslash reads as a slash, and any
 number of slashes or backslashes may follow the scheme, as in that parser:
 `https://x.com\@evil.com/p` has the host `x.com` and the path `/@evil.com/p`,
-`https://x.com/a\b/c` has the path `/a/b/c`, and `https:x.com/a` has the host `x.com`.
-In a URL of any other scheme the backslash is kept as it is.
+`https://x.com/a\b/c` has the path `/a/b/c`, `http://[::1]\x` has the path `/x`, and
+`https:x.com/a` has the host `x.com`. In a URL of any other scheme the backslash is kept
+as it is.
+
+Before the URL is read, C0 controls and spaces are stripped from both of its ends and every
+tab, line feed and carriage return inside it is removed, as that parser does:
+`https://x.com/a/b ` has the path `/a/b`. A port must be empty or a number from 0 to 65535
+written in ASCII digits; any other port makes the URL malformed and raises `CookieError`,
+as URL parsers refuse it. This also refuses `https://u:p\@x.com/`, whose authority ends at
+the backslash and so has the port `p`.
 
 The request path is normalized the way that parser does it before it gives the default
 path or is matched: spaces, double quotes, `<`, `>`, `^`, backquotes, braces, controls
@@ -229,6 +237,9 @@ extension names and command line input. What changed:
 - In an `http`, `https`, `ws`, `wss` or `ftp` request URL a backslash reads as a slash
   (0.2.0 kept it, so `https://x.com\@evil.com/` gave the host `evil.com`), and
   `https:x.com` has a host.
+- C0 controls and spaces are stripped from both ends of a request URL (0.2.0 kept a
+  trailing one in the host or path), and a port that is not empty or a number from 0 to
+  65535 raises `CookieError` (0.2.0 ignored the port).
 - An IPv6 request host is stored in its compressed form (`::1` for `[0:0::1]`), and one
   with a zone ID raises `CookieError`.
 - `is_public_suffix` gets the Domain without a trailing dot.

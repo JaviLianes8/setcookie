@@ -78,7 +78,15 @@ Every change against 0.2.0 is listed here; the
   and any number of slashes may follow the scheme, as the WHATWG URL parser reads them:
   `https://x.com\@evil.com/p` has the host `x.com` (0.2.0 read `evil.com`),
   `https://x.com/a\b/c` the path `/a/b/c`, and `https:x.com/a` the host `x.com` (0.2.0
-  raised `CookieError`).
+  raised `CookieError`). A bracketed host may be followed by a backslash
+  (`http://[::1]\x` has the path `/x`).
+- C0 controls and spaces are stripped from both ends of a request URL and tab, line feed
+  and carriage return are removed from it, as the WHATWG URL parser does: a trailing
+  space no longer becomes part of the host (0.2.0 raised `CookieError` for
+  `https://x.com `) or of the path (`https://x.com/a/b ` matches `Path=/a/b`).
+- A request URL whose port is not empty or a number from 0 to 65535 in ASCII digits
+  raises `CookieError("the request URL is malformed")`, as URL parsers refuse it; 0.2.0
+  ignored the port, so `https://x.com:abc/` was read as `x.com`.
 - A bracketed IPv6 request host is serialized as the WHATWG URL Standard does it
   (`[0:0::1]` is `::1`, `[::FFFF:1.2.3.4]` is `::ffff:102:304`), so spellings of one
   address match each other, and a host with a zone ID (`[fe80::1%25eth0]`) raises

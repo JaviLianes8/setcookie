@@ -13,8 +13,10 @@ from ._errors import CookieError, type_error
 _SECURE_SCHEMES = frozenset({"https", "wss"})
 # The special schemes of the WHATWG URL Standard that have a host (``file`` aside).
 _SPECIAL_SCHEMES = frozenset({"ftp", "http", "https", "ws", "wss"})
-# What urlsplit strips or removes first, as the WHATWG URL parser does.
-_LEADING = "".join(chr(code) for code in range(0x21))
+# What is stripped from both ends (C0 controls and space) or removed first, as the WHATWG
+# URL parser does.
+_STRIPPED = "".join(chr(code) for code in range(0x21))
+_SCHEME = re.compile("([A-Za-z][A-Za-z0-9+.-]*):")
 _REMOVED = str.maketrans("", "", "\t\n\r")
 # The forbidden domain code points of the WHATWG URL Standard.
 _FORBIDDEN = frozenset(chr(code) for code in range(0x20)) | frozenset(" #%/:<>?@[\\]^|\x7f")
@@ -45,16 +47,20 @@ def request_of(url: str) -> Request:
     ``wss`` or ``ftp`` URL a backslash in the authority or path reads as a slash and any
     number of slashes may follow the scheme, as in that parser. A bracketed host must be an
     IPv6 address without a zone ID and is serialized as that parser does (``[0:0::1]`` is
-    ``::1``).
+    ``::1``). As in that parser, C0 controls and spaces are stripped from both ends, tab and
+    newlines removed, and a port must be empty or a number from 0 to 65535.
     """
     if not isinstance(url, str):
         raise type_error("url", "a str", url)
-    url = str.__str__(url).lstrip(_LEADING).translate(_REMOVED)
+    url = str.__str__(url).strip(_STRIPPED).translate(_REMOVED)
+    scheme = _SCHEME.match(url)
+    if scheme and scheme.group(1).lower() in _SPECIAL_SCHEMES:
+        url = _special(url, len(scheme.group(1)))
     try:
         parts = urlsplit(url)
-        if parts.scheme in _SPECIAL_SCHEMES:
-            parts = urlsplit(_special(url, len(parts.scheme)))
         host = parts.hostname
+        if not _valid_port(parts.netloc.rpartition("@")[2]):
+            raise ValueError("the port is not a number from 0 to 65535")
     except ValueError as error:
         raise CookieError("the request URL is malformed") from error
     if not host:
@@ -75,6 +81,18 @@ def _special(url: str, length: int) -> str:
     # or the path, so every backslash can be read as a slash.
     rest = url[length + 1 :].replace("\\", "/").lstrip("/")
     return f"{url[:length]}://{rest}"
+
+
+def _valid_port(hostinfo: str) -> bool:
+    """Whether the port after the host is empty or a number the URL parser accepts."""
+    if hostinfo.startswith("["):
+        rest = hostinfo.partition("]")[2]
+        if rest and not rest.startswith(":"):
+            return False
+        port = rest[1:]
+    else:
+        port = hostinfo.partition(":")[2]
+    return not port or (port.isascii() and port.isdigit() and int(port) <= 65535)
 
 
 def _ipv6(host: str) -> str:
