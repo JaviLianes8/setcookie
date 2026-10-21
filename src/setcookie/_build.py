@@ -4,31 +4,25 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import NoReturn
 
-from ._chars import (
-    MAX_ATTRIBUTE_OCTETS,
-    MAX_PAIR_OCTETS,
-    WSP,
-    ascii_lower,
-    is_av_text,
-    is_cookie_value,
-    is_hostname,
-    is_token,
-    octets,
+from ._checks import (
+    check_domain,
+    check_flags,
+    check_max_age,
+    check_optional_str,
+    check_pair,
+    check_path,
+    check_same_site,
+    exact,
+    expires_text,
+    extension_texts,
+    fail,
 )
-from ._dates import format_http_date
-from ._errors import CookieError
 from ._model import SameSite
 from ._rules import prefix_problem, secure_problem
 from ._strict import check_strict
 
-_SAME_SITE_VALUES = ("Lax", "Strict", "None")
-_KNOWN = frozenset(
-    {"expires", "max-age", "domain", "path", "secure", "httponly", "samesite", "partitioned"}
-)
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
-_BIG = 10**MAX_ATTRIBUTE_OCTETS  # more digits than an attribute value may hold
 
 
 def build(
@@ -48,42 +42,51 @@ def build(
     """Assemble one Set-Cookie line; raise CookieError for anything unsafe or ignored.
 
     Every part is checked on its own before it is joined, so no argument can end the
-    line, start another attribute or inject a header. Prefix rules, the Secure
-    requirement of SameSite=None and Partitioned, and the size limits are enforced.
-    A naive ``expires`` is taken to be UTC, not local time.
+    line, start another attribute or inject a header; a ``str`` or ``int`` subclass, such
+    as an Enum member, is written as the plain value it holds. Prefix rules, the Secure
+    requirement of SameSite=None and Partitioned, and the size limits are enforced; an
+    extension name may appear only once, whatever its case.
+    A naive ``expires`` is taken to be UTC, not local time. ``path=None`` leaves the
+    Path attribute out. An argument of the wrong type raises TypeError.
+
+    >>> build("sid", "a1b2", max_age=3600, secure=True, http_only=True, same_site="Lax")
+    'sid=a1b2; Max-Age=3600; Path=/; Secure; HttpOnly; SameSite=Lax'
+    >>> build("theme", "dark", path=None, extensions=[("Priority", "High")])
+    'theme=dark; Priority=High'
+    >>> build("sid", "a\\r\\nSet-Cookie: admin=1")
+    Traceback (most recent call last):
+    ...
+    setcookie.CookieError: cookie value has U+000D at index 1, outside cookie-octet; encode it first
     """
-    _check_pair(name, value)
+    name, value, domain, path = exact(name), exact(value), exact(domain), exact(path)
+    max_age, same_site = exact(max_age), exact(same_site)
+    check_pair(name, value)
+    check_flags(secure=secure, http_only=http_only, partitioned=partitioned)
+    for label, text in (("domain", domain), ("path", path)):
+        check_optional_str(label, text)
     parts = [f"{name}={value}"]
     if expires is not None:
-        parts.append(f"Expires={_expires(expires)}")
+        parts.append(f"Expires={expires_text(expires)}")
     if max_age is not None:
-        if isinstance(max_age, bool) or not isinstance(max_age, int) or not 0 < max_age < _BIG:
-            _fail("max_age must be a positive int below 10**1024; use expire() to delete")
-        parts.append(f"Max-Age={max_age}")
+        parts.append(f"Max-Age={check_max_age(max_age)}")
     if domain is not None:
-        if not isinstance(domain, str) or not is_hostname(domain):
-            _fail(f"domain {domain!r} is not a host name (no leading dot, no port)")
+        check_domain(domain)
         parts.append(f"Domain={domain}")
     if path is not None:
-        if not isinstance(path, str) or (path and not path.startswith("/")):
-            _fail(f"path {path!r} must be empty or start with '/'")
-        if path != path.strip(WSP):
-            _fail(f"path {path!r} has leading or trailing whitespace")
-        _check_attribute_value("path", path)
+        check_path(path)
         parts.append(f"Path={path}")
     parts.extend(flag for flag, on in (("Secure", secure), ("HttpOnly", http_only)) if on)
     if same_site is not None:
-        if same_site not in _SAME_SITE_VALUES:
-            _fail(f"same_site must be one of {_SAME_SITE_VALUES}, got {same_site!r}")
+        check_same_site(same_site)
         parts.append(f"SameSite={same_site}")
     if partitioned:
         parts.append("Partitioned")
-    parts.extend(_extension(item) for item in extensions)
+    parts.extend(extension_texts(extensions))
     problem = prefix_problem(
         name, secure=secure, has_domain=domain is not None, path=path
     ) or secure_problem(same_site=same_site, partitioned=partitioned, secure=secure)
     if problem:
-        _fail(problem)
+        fail(problem)
     header = "; ".join(parts)
     check_strict(header)
     return header
@@ -103,6 +106,11 @@ def expire(
 
     Pass the same name, Domain and Path the cookie was set with; prefixed names still
     need their Secure, Domain and Path rules.
+
+    >>> expire("sid")
+    'sid=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/'
+    >>> expire("__Host-sid", secure=True)
+    '__Host-sid=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; Secure'
     """
     return build(
         name,
@@ -117,55 +125,5 @@ def expire(
     )
 
 
-def _check_pair(name: str, value: str) -> None:
-    if not isinstance(name, str) or not is_token(name):
-        _fail(f"cookie name {name!r} is not an HTTP token")
-    if not isinstance(value, str) or not is_cookie_value(value):
-        _fail(f"cookie value {value!r} has characters outside cookie-octet; encode it first")
-    if octets(name) + octets(value) > MAX_PAIR_OCTETS:
-        _fail("the name and value are longer than 4096 octets together")
-
-
-def _expires(moment: datetime) -> str:
-    if not isinstance(moment, datetime):
-        _fail(f"expires must be a datetime, got {type(moment).__name__}")
-    try:
-        text = format_http_date(moment)
-    except OverflowError:
-        _fail("expires is outside the range of representable UTC dates")
-    if int(text[12:16]) < 1601:
-        _fail("expires before the year 1601 is ignored by user agents")
-    return text
-
-
-def _extension(item: tuple[str, str | None]) -> str:
-    if not isinstance(item, tuple) or len(item) != 2:
-        _fail(f"each extension must be a (name, value) tuple, got {item!r}")
-    key, text = item
-    if (
-        not isinstance(key, str)
-        or not key
-        or key != key.strip(WSP)
-        or "=" in key
-        or not is_av_text(key)
-    ):
-        _fail(f"extension name {key!r} is not a valid attribute name")
-    if ascii_lower(key) in _KNOWN:
-        _fail(f"extension {key!r} would be read as a standard attribute; use its argument")
-    if text is None:
-        return key
-    if not isinstance(text, str) or text != text.strip(WSP):
-        _fail(f"extension value {text!r} must be a str without outer whitespace")
-    _check_attribute_value(key, text)
-    return f"{key}={text}"
-
-
-def _check_attribute_value(label: str, text: str) -> None:
-    if not is_av_text(text):
-        _fail(f"{label} value {text!r} has control characters or ';'")
-    if octets(text) > MAX_ATTRIBUTE_OCTETS:
-        _fail(f"{label} value is longer than 1024 octets")
-
-
-def _fail(reason: str) -> NoReturn:
-    raise CookieError(reason)
+build.__module__ = "setcookie"
+expire.__module__ = "setcookie"

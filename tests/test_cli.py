@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import subprocess
+import sys
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 
+import setcookie
 from setcookie._cli import main
 
 Result = tuple[int, Any, str]
@@ -16,8 +20,10 @@ Result = tuple[int, Any, str]
 def run(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> Callable[..., Result]:
-    def invoke(argv: list[str], stdin: str = "") -> Result:
-        monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
+    def invoke(argv: list[str], stdin: str | bytes = "") -> Result:
+        data = stdin.encode() if isinstance(stdin, str) else stdin
+        # A cp1252 text layer like a Windows console: the CLI must read the bytes beneath it.
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(data), encoding="cp1252"))
         code = main(argv)
         out, err = capsys.readouterr()
         return code, json.loads(out) if out else None, err
@@ -77,3 +83,94 @@ def test_no_input_is_a_usage_error(run: Callable[..., Result]) -> None:
     with pytest.raises(SystemExit) as caught:
         run([], "\n\n")
     assert caught.value.code == 2
+
+
+def test_a_header_dump_without_set_cookie_prints_an_empty_list(
+    run: Callable[..., Result],
+) -> None:
+    for dump in ("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n", "HTTP/2 204\n"):
+        code, report, err = run(["--strict"], dump)
+        assert (code, report, err) == (0, [], "")
+
+
+def test_set_cookie_fields_without_a_status_line_are_a_dump(run: Callable[..., Result]) -> None:
+    code, report, _ = run([], "a=1\nSet-Cookie: b=2\nset-cookie:c=3\n")
+    assert code == 0 and isinstance(report, list)
+    assert [entry["line"] for entry in report] == ["b=2", "c=3"]
+
+
+def test_stdin_is_decoded_as_utf_8_whatever_the_locale(run: Callable[..., Result]) -> None:
+    code, report, _ = run([], b"\xef\xbb\xbfsid=caf\xc3\xa9\n")
+    assert code == 0 and isinstance(report, list)
+    assert report[0]["cookie"]["name"] == "sid"
+    assert report[0]["cookie"]["value"] == "café"
+    code, report, err = run(["--strict"], b"sid=caf\xc3\xa9\n")
+    assert code == 1 and "U+00E9 at index 3" in err
+
+
+def test_bytes_that_are_not_utf_8_do_not_crash(run: Callable[..., Result]) -> None:
+    code, report, _ = run([], b"sid=a\xffb\n")
+    assert code == 0 and isinstance(report, list) and report[0]["cookie"]["name"] == "sid"
+    assert report[0]["cookie"]["value"] == "a\udcffb"
+
+
+def _closed_stdin_run(command: list[str], **options: Any) -> None:
+    # The child imports the same setcookie as these tests, installed or from src.
+    env = {**os.environ, "PYTHONPATH": os.path.dirname(os.path.dirname(setcookie.__file__))}
+    done = subprocess.run(command, capture_output=True, text=True, check=False, env=env, **options)
+    assert done.returncode == 2, done.stderr
+    assert "no Set-Cookie line given" in done.stderr and "Traceback" not in done.stderr
+
+
+def test_closed_stdin_is_a_usage_error_not_a_crash() -> None:
+    # Python sets sys.stdin to None when descriptor 0 is closed (`setcookie <&-`).
+    code = "import sys; sys.stdin = None; from setcookie._cli import main; sys.exit(main([]))"
+    _closed_stdin_run([sys.executable, "-c", code])
+    if sys.platform != "win32":
+        _closed_stdin_run([sys.executable, "-m", "setcookie"], preexec_fn=lambda: os.close(0))
+
+
+def test_now_keeps_its_offset(run: Callable[..., Result]) -> None:
+    argv = ["--url", "https://h.example/", "--now", "2026-10-13T00:00:00+02:00", "a=b; Max-Age=60"]
+    code, report, _ = run(argv)
+    assert code == 0 and isinstance(report, list)
+    assert report[0]["stored"]["expiry"] == "2026-10-13T00:01:00+02:00"
+
+
+def test_a_host_the_codec_cannot_decode_is_reported_not_raised(
+    run: Callable[..., Result],
+) -> None:
+    code, report, err = run(["--url", "https://xn--99999999999999999999a/", "sid=1"])
+    assert code == 1 and isinstance(report, list)
+    assert "canonicalized" in report[0]["error"] and "canonicalized" in err
+
+
+def test_stdin_lines_keep_their_outer_whitespace(run: Callable[..., Result]) -> None:
+    code, report, err = run(["--strict"], "a=1 \n")
+    assert code == 1 and isinstance(report, list)
+    assert report[0]["line"] == "a=1 " and "trailing whitespace" in report[0]["error"]
+    assert "setcookie: strict:" in err
+    code, report, _ = run([], "  a=1\n")
+    assert code == 0 and isinstance(report, list)
+    assert report[0]["line"] == "  a=1" and report[0]["cookie"]["value"] == "1"
+
+
+def test_a_text_stdin_without_a_byte_buffer_is_read(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An embedding host may swap sys.stdin for a plain text stream such as StringIO.
+    monkeypatch.setattr("sys.stdin", io.StringIO("a=1\nb=2\n"))
+    assert main([]) == 0
+    out, err = capsys.readouterr()
+    assert err == ""
+    assert [entry["cookie"]["name"] for entry in json.loads(out)] == ["a", "b"]
+    monkeypatch.setattr("sys.stdin", io.StringIO("a=1 \n"))
+    assert main(["--strict"]) == 1
+    out, err = capsys.readouterr()
+    report = json.loads(out)
+    assert report[0]["line"] == "a=1 " and "trailing whitespace" in report[0]["error"]
+    assert "setcookie: strict:" in err
+    # The last character is kept when the text has no final newline.
+    monkeypatch.setattr("sys.stdin", io.StringIO("a=1"))
+    assert main([]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["cookie"]["value"] == "1"

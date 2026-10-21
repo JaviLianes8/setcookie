@@ -38,12 +38,6 @@ def test_a_fake_a_label_host_is_refused() -> None:
 @pytest.mark.parametrize(
     "options",
     [
-        {"domain": 5},
-        {"path": 5},
-        {"extensions": [(1, "x")]},
-        {"extensions": [("X", 1)]},
-        {"extensions": ["ab"]},
-        {"extensions": [("a", "b", "c")]},
         {"max_age": 10**5000},
         {"max_age": 10**1024},
         {"expires": datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-5)))},
@@ -52,6 +46,25 @@ def test_a_fake_a_label_host_is_refused() -> None:
 )
 def test_bad_build_arguments_raise_cookie_error(options: dict[str, object]) -> None:
     with pytest.raises(CookieError):
+        build("a", "b", **options)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"domain": 5},
+        {"path": 5},
+        {"extensions": [(1, "x")]},
+        {"extensions": [("X", 1)]},
+        {"extensions": ["ab"]},
+        {"extensions": [("a", "b", "c")]},
+        {"extensions": "ab"},
+        {"secure": 1},
+        {"same_site": 1},
+    ],
+)
+def test_build_arguments_of_the_wrong_type_raise_type_error(options: dict[str, object]) -> None:
+    with pytest.raises(TypeError):
         build("a", "b", **options)  # type: ignore[arg-type]
 
 

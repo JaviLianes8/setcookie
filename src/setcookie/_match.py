@@ -1,45 +1,14 @@
-"""Request URLs, default-path, domain-match and path-match (sections 5.1.2 to 5.1.4)."""
+"""Default-path, domain-match and path-match (sections 5.1.3 and 5.1.4)."""
 
 from __future__ import annotations
 
 import ipaddress
-from typing import TYPE_CHECKING, NamedTuple
-from urllib.parse import urlsplit
+from typing import TYPE_CHECKING
 
-from ._errors import CookieError
+from ._url import request_of
 
 if TYPE_CHECKING:
     from ._model import StoredCookie
-
-_SECURE_SCHEMES = frozenset({"https", "wss"})
-
-
-class Request(NamedTuple):
-    host: str
-    path: str
-    secure: bool
-
-
-def request_of(url: str) -> Request:
-    """Split a request URL into its canonical host, path and whether it is secure.
-
-    Non-ASCII hosts go through the standard library's IDNA 2003 codec, which maps a few
-    characters (such as sharp s) differently from the IDNA 2008 rules of section 5.1.2.
-    """
-    try:
-        parts = urlsplit(url)
-        host = parts.hostname
-    except ValueError as error:
-        raise CookieError(f"the request URL is malformed: {url!r}") from error
-    if not host:
-        raise CookieError(f"the request URL has no host: {url!r}")
-    try:
-        canonical = host.rstrip(".").encode("idna").decode("ascii").lower()
-        # A label that claims to be an A-label must decode (section 5.1.2 step 4).
-        canonical.encode("ascii").decode("idna")
-    except UnicodeError:
-        raise CookieError(f"the request host cannot be canonicalized: {host!r}") from None
-    return Request(canonical, parts.path, parts.scheme.lower() in _SECURE_SCHEMES)
 
 
 def is_ip_address(host: str) -> bool:

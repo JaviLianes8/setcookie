@@ -51,7 +51,7 @@ def test_build_accepts_quoted_and_empty_values() -> None:
     "name", ["", "s id", "sid;", "sid=", "s\u00e9", "a\r\nSet-Cookie: x", "a,b", '"a"']
 )
 def test_build_rejects_names_that_are_not_tokens(name: str) -> None:
-    with pytest.raises(CookieError, match="not an HTTP token"):
+    with pytest.raises(CookieError, match=r"^cookie name (is empty|.* outside tchar)$"):
         build(name, "abc")
 
 
@@ -78,16 +78,22 @@ def test_build_rejects_unsafe_paths(path: str) -> None:
         build("sid", "abc", path=path)
 
 
-@pytest.mark.parametrize("max_age", [0, -3, True, 1.5, "60"])
-def test_build_rejects_max_age_that_is_not_a_positive_int(max_age: object) -> None:
+@pytest.mark.parametrize("max_age", [0, -3])
+def test_build_rejects_max_age_that_is_not_a_positive_int(max_age: int) -> None:
     with pytest.raises(CookieError, match="positive int"):
+        build("sid", "abc", max_age=max_age)
+
+
+@pytest.mark.parametrize("max_age", [True, 1.5, "60"])
+def test_build_rejects_max_age_of_the_wrong_type(max_age: object) -> None:
+    with pytest.raises(TypeError, match="max_age must be an int or None"):
         build("sid", "abc", max_age=max_age)  # type: ignore[arg-type]
 
 
 def test_build_rejects_expires_that_user_agents_ignore() -> None:
     with pytest.raises(CookieError, match="1601"):
         build("sid", "abc", expires=datetime(1600, 12, 31, tzinfo=timezone.utc))
-    with pytest.raises(CookieError, match="datetime"):
+    with pytest.raises(TypeError, match="expires must be a datetime or None, got str"):
         build("sid", "abc", expires="tomorrow")  # type: ignore[arg-type]
 
 
@@ -138,9 +144,9 @@ def test_build_rejects_unsafe_extensions(extension: tuple[str, str | None]) -> N
 
 
 def test_build_refuses_non_string_arguments() -> None:
-    with pytest.raises(CookieError):
+    with pytest.raises(TypeError, match="name must be a str, got int"):
         build(1, "abc")  # type: ignore[arg-type]
-    with pytest.raises(CookieError):
+    with pytest.raises(TypeError, match="value must be a str, got NoneType"):
         build("sid", None)  # type: ignore[arg-type]
 
 

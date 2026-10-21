@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
+import errno
 import json
+import os
 import re
 import sys
 from collections.abc import Sequence
@@ -15,11 +18,19 @@ from ._errors import CookieError
 from ._parse import parse
 from ._store import receive
 
+# A reader that stops early (head, a pager) closes the pipe: stop quietly with the status
+# a shell reports for a tool killed by SIGPIPE.
+SIGPIPE_STATUS = 141
+# RFC 9112 forbids space before the colon, but a dump is read leniently.
 _HEADER = re.compile(r"set-cookie[ \t]*:[ \t]*(.*)", re.IGNORECASE | re.DOTALL)
 
 
 def _lines(args: Sequence[str], stdin: str) -> list[str]:
-    """Explicit lines, or stdin; from a header dump only the Set-Cookie fields are kept."""
+    """Explicit lines, or stdin; from a header dump only the Set-Cookie fields are kept.
+
+    Stdin is a dump when its first non-empty line is a status line or any line is a
+    Set-Cookie field (``grep -i set-cookie`` output); every other line of a dump is ignored.
+    """
     if args:
         return list(args)
     raw = [line.rstrip("\r") for line in stdin.split("\n")]
@@ -29,6 +40,17 @@ def _lines(args: Sequence[str], stdin: str) -> list[str]:
     if headers or (present and present[0].startswith("HTTP/")):
         return headers
     return present
+
+
+def _stdin() -> str:
+    # Header octets do not depend on the locale: read bytes, as UTF-8, keeping any others.
+    if sys.stdin is None:  # descriptor 0 closed: no input, so main reports the usage error
+        return ""
+    buffer = getattr(sys.stdin, "buffer", None)
+    if buffer is None:
+        return sys.stdin.read()
+    data: bytes = buffer.read()
+    return data.decode("utf-8-sig", "surrogateescape")
 
 
 def _plain(value: object) -> Any:
@@ -70,22 +92,53 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="setcookie",
         description="Parse Set-Cookie lines (arguments, or stdin such as a curl -sI dump).",
     )
-    parser.add_argument("lines", nargs="*", help="Set-Cookie values; read stdin when absent")
+    parser.add_argument(
+        "lines", nargs="*", metavar="LINE", help="Set-Cookie values; read stdin when absent"
+    )
     parser.add_argument("--strict", action="store_true", help="check the server grammar")
     parser.add_argument("--url", help="show what a user agent stores for this request URL")
     parser.add_argument(
-        "--now", type=_moment, default=None, help="ISO time for --url (default: the clock)"
+        "--now",
+        type=_moment,
+        default=None,
+        metavar="ISO",
+        help="ISO time for --url (default: the clock)",
     )
     options = parser.parse_args(argv)
     if options.now is None:
         options.now = datetime.now(timezone.utc)
-    lines = _lines(options.lines, "" if options.lines else sys.stdin.read())
-    if not lines:
+    text = "" if options.lines else _stdin()
+    lines = _lines(options.lines, text)
+    if not options.lines and not text.strip():
         parser.error("no Set-Cookie line given")
     reports = [_report(line, options) for line in lines]
-    json.dump([entry for entry, _ in reports], sys.stdout, indent=2)
-    sys.stdout.write("\n")
     failures = [entry["error"] for entry, ok in reports if not ok]
-    for reason in failures:
-        print(f"setcookie: {reason}", file=sys.stderr)
+    try:
+        # A closed descriptor leaves its stream None: print would fall back to stdout.
+        if sys.stdout is not None:
+            json.dump([entry for entry, _ in reports], sys.stdout, indent=2)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        if sys.stderr is not None:
+            for reason in failures:
+                sys.stderr.write(f"setcookie: {reason}\n")
+            sys.stderr.flush()
+    except OSError as error:
+        if not _closed_pipe(error):
+            raise
+        return SIGPIPE_STATUS
+    if sys.stdout is None:  # the report could not be written, as with a closed pipe
+        return SIGPIPE_STATUS
     return 1 if failures else 0
+
+
+def _closed_pipe(error: OSError) -> bool:
+    """True for a write to a pipe its reader closed; then later writes go to devnull."""
+    # Windows reports a write to a closed pipe as EINVAL as well as EPIPE.
+    if not isinstance(error, BrokenPipeError) and error.errno != errno.EINVAL:
+        return False
+    for stream in (sys.stdout, sys.stderr):
+        # So the flush at exit cannot fail on the same pipe again.
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            os.dup2(os.open(os.devnull, os.O_WRONLY), stream.fileno())
+    return True

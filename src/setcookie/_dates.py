@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from ._errors import type_error
+
 _DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 _MONTHS = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -53,8 +55,20 @@ def parse_date(text: str) -> datetime | None:
     """Parse a cookie-date with the algorithm of section 5.1.1; None when it fails.
 
     The result is an aware datetime in UTC. Zone names and offsets are not read: the
-    algorithm treats every time as UTC.
+    algorithm treats every time as UTC. A ``text`` that is not a str raises TypeError.
+
+    >>> print(parse_date("Wed, 09 Jun 2021 10:18:14 GMT"))
+    2021-06-09 10:18:14+00:00
+    >>> print(parse_date("Fri Jan 01 2038 00:00:00 +0200"))
+    2038-01-01 00:00:00+00:00
+    >>> print(parse_date("1-Jan-70 0:0:0"))
+    1970-01-01 00:00:00+00:00
+    >>> print(parse_date("31 Feb 2030 00:00:00"), parse_date("01 Jan 1600 00:00:00"))
+    None None
     """
+    if not isinstance(text, str):
+        raise type_error("text", "a str", text)
+    text = str.__str__(text)  # a subclass cannot change what the algorithm reads
     time: tuple[int, int, int] | None = None
     day: int | None = None
     month: int | None = None
@@ -83,15 +97,26 @@ def parse_date(text: str) -> datetime | None:
         return None
 
 
+def fixdate_problem(text: str) -> str | None:
+    """Why ``text`` is not an IMF-fixdate of a real moment, or None when it is one."""
+    if _FIXDATE.fullmatch(text) is None:
+        return "is not an IMF-fixdate"
+    if parse_fixdate(text) is None:
+        return "is an IMF-fixdate of a moment that does not exist"
+    return None
+
+
 def parse_fixdate(text: str) -> datetime | None:
     """Parse an exact IMF-fixdate (RFC 9110 section 5.6.7); None for anything else.
 
     Only the grammar and the calendar are checked, not that the day name fits the date:
     the draft's own example in section 3.1 pairs "Wed" with 9 June 2026, a Tuesday.
+    The grammar allows a leap second, 23:59:60, which is read as 23:59:59.
     """
     match = _FIXDATE.fullmatch(text)
     if match is None:
         return None
+    leap = match.group(5, 6, 7) == ("23", "59", "60")
     try:
         moment = datetime(
             int(match[4]),
@@ -99,7 +124,7 @@ def parse_fixdate(text: str) -> datetime | None:
             int(match[2]),
             int(match[5]),
             int(match[6]),
-            int(match[7]),
+            59 if leap else int(match[7]),
             tzinfo=timezone.utc,
         )
     except ValueError:
@@ -110,12 +135,16 @@ def parse_fixdate(text: str) -> datetime | None:
 def format_http_date(value: datetime) -> str:
     """Render a datetime as an IMF-fixdate in GMT, regardless of locale.
 
-    A naive datetime is taken to be UTC.
+    A naive datetime, including one whose tzinfo gives no offset, is taken to be UTC.
     """
-    moment = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    naive = value.utcoffset() is None
+    moment = value.replace(tzinfo=timezone.utc) if naive else value
     moment = moment.astimezone(timezone.utc)
     return (
         f"{_DAYS[moment.weekday()]}, "
         f"{moment.day:02d} {_MONTHS[moment.month - 1]} {moment.year:04d} "
         f"{moment.hour:02d}:{moment.minute:02d}:{moment.second:02d} GMT"
     )
+
+
+parse_date.__module__ = "setcookie"
