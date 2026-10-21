@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 9: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 10: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -655,3 +655,57 @@ laptop (CPython 3.14.6, turn portatil/1, low priority, clean clone of 1f98ac0, f
 sources absent, so their tests and the opt-in e2e test skip): 855 tests, 832 passed,
 23 skipped, none failed. The same run at e8158de on Elena's PC (CPython 3.14.2, turn
 elena/7) also exited 0.
+
+### Round 10
+
+Lens e ran again against 072c242 (the fifth round of the second full pass). It confirmed
+F1 to F3 fixed, killed all 6 re-applied mutants on CPython 3.14.2, and swept 28 new probes
+on `_url.py` (15 killed, S14, S19 and S29 equivalent, S23 killed on 3.11.5 only). The six
+survivors are fixed below; none is disputed. Five of them pin behaviour that was already
+right; F8 is a behaviour change on Python 3.10 only, listed in the 1.0.0 section of the
+CHANGELOG and in the GUIDE. Every contract is in `tests/test_qa10_fixes.py`. Expected hosts
+and paths were measured on this PC with Node.js 24.18.0 `new URL(...)`, which gives the
+listed host for every accepted URL, an empty host for `foo:/@/x.com/p` and `a:/u@/x.com/p`,
+and throws for the other refused URLs.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| e | F4: the scheme part of the userinfo expression not pinned (S06 lower case only, S07 letters only) | `test_the_userinfo_is_dropped_after_any_scheme`: `HTTPS://u:1@x.com/a/b`, `HTTP://[::1]@a.com/p`, `web+cal://u:1@x.com/a`, `foo1://u:1@x.com/a`, `a.b-c://u:1@x.com/a`, through `request_of`, `receive` and `matches` |
+| e | F5: an empty userinfo not pinned (S08 `+@`) | same test: `https://@[::1]/a/b` (host `::1`) and `https://@x.com/a/b` |
+| e | F6: a backslash in the userinfo of a non-special URL not pinned (S09) | same test: `foo://a:@x.com/a` and `foo://a:1@[::1]/a` |
+| e | F7: the `//` of the userinfo expression not pinned (S10 `/+`) | `test_a_url_without_an_authority_has_no_host`: `foo:/@/x.com/p`, `/@/x.com/p`, `a:/u@/x.com/p`, each `the request URL has no host` |
+| e | F8: on Python 3.10 `urlsplit` takes `1http` or `+a` as a scheme, so `receive("a=1", "1http://u@x.com/a")` stored the domain `x.com` there (0.2.0 did the same) while 3.11 and later raise `has no host`; S16, S17 and S28 survived the 3.10 suite | `_url.request_of` treats a URL as hostless when `urlsplit` returns a scheme that the scheme expression (an ASCII letter first) did not match, before the port check. `test_a_url_without_an_authority_has_no_host` gains `1http://u@x.com/a`, `+a://u@x.com/a`, `+a://x.com/a`, `1http://u:1@x.com/a` and `9://x.com/a`; on 3.10.19 four of them failed on 072c242 first (the colon case gave `malformed`) and all pass now on 3.10.19, 3.11.5, 3.13.2 and 3.14.2 |
+| e | F9: `_valid_port` with a `[` inside the authority not pinned on 3.11.5 (S25) | `test_a_bracket_inside_the_host_is_malformed`: `http://x[::1]/` is `the request URL is malformed` on every version (on 3.10, 3.11.14 and later `urlsplit` raises first) |
+
+Each mutant applied alone to a copy of 379fd58 with bytecode off, against
+`tests/test_qa10_fixes.py`, on CPython 3.10.19, 3.11.5 and 3.13.2 on this PC (single file,
+under a second per run):
+
+| Mutant | 3.10.19 | 3.11.5 | 3.13.2 |
+| --- | --- | --- | --- |
+| S06 scheme `[a-z][a-z0-9+.-]*` | killed | killed | killed |
+| S07 scheme `[A-Za-z][A-Za-z]*` | killed | killed | killed |
+| S08 `*@` changed to `+@` | killed | killed | killed |
+| S09 backslash added to the authority class | killed | killed | killed |
+| S10 `//` changed to `/+` | killed | killed | killed |
+| S25 `"[" in hostinfo` | equivalent (`urlsplit` raises first) | killed | equivalent |
+| F8 fix removed (`hostless = False`) | killed | equivalent | equivalent |
+
+S28 (a digit allowed first in the userinfo scheme) is equivalent after the fix: every URL
+it changes starts with something other than a letter, which is now hostless with or
+without the mutant (checked on 3.10.19 and 3.11.5 with `1http://u@x.com/a`,
+`1http://u:1@x.com/a`, `9a://u:1@[::1]/a` and `0://@x.com/a`). S16 and S17 change how the
+host is read from a netloc that still holds an `@`, which after the userinfo removal only
+the 3.10 hostless URLs had, and those no longer reach that code; their re-run is left to
+lens e.
+
+Disputed findings: none.
+
+Fix commit: 379fd58, on top of 072c242.
+
+Gates at 379fd58: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on Elena's
+PC (CPython 3.14.2, turn elena/7, clean clone of 379fd58, fetched sources absent, so their
+tests and the opt-in e2e test skip): 872 tests, 848 passed, 24 skipped, none failed. The
+URL test files (`test_qa6` to `test_qa10`, the pins, `test_store`, `test_wpt`,
+`test_contract_edges`, 369 tests) also pass on CPython 3.10.19 and 3.11.5 on this PC.
