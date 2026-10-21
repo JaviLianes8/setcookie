@@ -90,10 +90,12 @@ Every change against 0.2.0 is listed here; the
 - The userinfo of a request URL is dropped up to the last `@` of its authority before the
   host is read, as the WHATWG URL parser does, so a `[` or `]` in it no longer hides the
   host: `http://[::1]@a.com/p` has the host `a.com` (0.2.0 raised `CookieError`).
-- A request URL that starts with something like a scheme but not a letter, such as
-  `1http://u@x.com/a` or `+a://x.com/a`, raises `CookieError("the request URL has no
-  host")` on every supported Python, as the WHATWG URL parser refuses it; on Python 3.10
-  `urlsplit` read such a prefix as a scheme, so 0.2.0 found the host `x.com` there.
+- A request URL that starts with a digit, `+`, `-` or `.`, such as `1http://u@x.com/a`,
+  `+a://x.com/a` or `-a://x.com/a`, raises `CookieError("the request URL has no host")` on
+  every supported Python, as the WHATWG URL parser refuses it, whatever follows (also
+  `1http://[/a`); on Python 3.10 `urlsplit` read such a prefix as a scheme, so 0.2.0 found
+  the host `x.com` there or, with a bracket in the authority, raised `the request URL is
+  malformed`. A scheme of one letter is still a scheme: `a://x.com/a` has the host `x.com`.
 - A bracketed IPv6 request host is serialized as the WHATWG URL Standard does it
   (`[0:0::1]` is `::1`, `[::FFFF:1.2.3.4]` is `::ffff:102:304`), so spellings of one
   address match each other, and a host with a zone ID (`[fe80::1%25eth0]`) raises

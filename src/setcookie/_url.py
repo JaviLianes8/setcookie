@@ -17,6 +17,9 @@ _SPECIAL_SCHEMES = frozenset({"ftp", "http", "https", "ws", "wss"})
 # URL parser does.
 _STRIPPED = "".join(chr(code) for code in range(0x21))
 _SCHEME = re.compile("([A-Za-z][A-Za-z0-9+.-]*):")
+# A URL that starts with a scheme character other than a letter has no scheme for the URL
+# parser, which refuses it, but the urlsplit of Python 3.10 may read a scheme there.
+_NOT_A_SCHEME = re.compile("[0-9+.-]")
 _REMOVED = str.maketrans("", "", "\t\n\r")
 # The authority runs to the first slash, question mark or number sign, and its userinfo to
 # its last at sign, whatever brackets the userinfo holds.
@@ -57,17 +60,17 @@ def request_of(url: str) -> Request:
     if not isinstance(url, str):
         raise type_error("url", "a str", url)
     url = str.__str__(url).strip(_STRIPPED).translate(_REMOVED)
+    if _NOT_A_SCHEME.match(url):
+        # Decided before urlsplit, which can raise on such a URL before Python 3.11.
+        raise CookieError("the request URL has no host")
     scheme = _SCHEME.match(url)
     if scheme and scheme.group(1).lower() in _SPECIAL_SCHEMES:
         url = _special(url, len(scheme.group(1)))
     url = _USERINFO.sub(r"\1", url, count=1)
     try:
         parts = urlsplit(url)
-        # Before 3.11 urlsplit takes a scheme that starts with a digit or a sign; the URL
-        # parser refuses such a URL, so it has no authority and no host.
-        hostless = bool(parts.scheme) and not scheme
-        host = None if hostless else parts.hostname
-        if not hostless and not _valid_port(parts.netloc):
+        host = parts.hostname
+        if not _valid_port(parts.netloc):
             raise ValueError("the port is not a number from 0 to 65535")
     except ValueError as error:
         raise CookieError("the request URL is malformed") from error

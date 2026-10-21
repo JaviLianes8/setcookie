@@ -153,9 +153,11 @@ The userinfo of the authority (everything up to its last `@`, the authority endi
 first `/`, `?` or `#`) is dropped before the host is read, whatever it holds, as in that
 parser: `http://[::1]@a.com/p` and `https://u:pw@x.com/` have the hosts `a.com` and
 `x.com`, and a colon in the userinfo is never read as a port. A scheme starts with an
-ASCII letter, so `1http://u@x.com/a` and `+a://x.com/a` have no host, as that parser refuses
-them, on every supported Python (the `urlsplit` of Python 3.10 reads such a prefix as a
-scheme).
+ASCII letter and may be that letter alone (`a://x.com/a` has the host `x.com`), so a URL
+that starts with a digit, `+`, `-` or `.`, such as `1http://u@x.com/a`, `+a://x.com/a`,
+`-a://x.com/a` or `1http://[/a`, has no host, as that parser refuses it, on every supported
+Python (the `urlsplit` of Python 3.10 reads such a prefix as a scheme, and raises on a
+bracket after it).
 
 The request path is normalized the way that parser does it before it gives the default
 path or is matched: spaces, double quotes, `<`, `>`, `^`, backquotes, braces, controls
