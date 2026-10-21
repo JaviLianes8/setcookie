@@ -152,7 +152,10 @@ the backslash and so has the port `p`.
 The userinfo of the authority (everything up to its last `@`, the authority ending at the
 first `/`, `?` or `#`) is dropped before the host is read, whatever it holds, as in that
 parser: `http://[::1]@a.com/p` and `https://u:pw@x.com/` have the hosts `a.com` and
-`x.com`, and a colon in the userinfo is never read as a port.
+`x.com`, and a colon in the userinfo is never read as a port. A scheme starts with an
+ASCII letter, so `1http://u@x.com/a` and `+a://x.com/a` have no host, as that parser refuses
+them, on every supported Python (the `urlsplit` of Python 3.10 reads such a prefix as a
+scheme).
 
 The request path is normalized the way that parser does it before it gives the default
 path or is matched: spaces, double quotes, `<`, `>`, `^`, backquotes, braces, controls

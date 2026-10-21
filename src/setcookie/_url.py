@@ -63,8 +63,11 @@ def request_of(url: str) -> Request:
     url = _USERINFO.sub(r"\1", url, count=1)
     try:
         parts = urlsplit(url)
-        host = parts.hostname
-        if not _valid_port(parts.netloc):
+        # Before 3.11 urlsplit takes a scheme that starts with a digit or a sign; the URL
+        # parser refuses such a URL, so it has no authority and no host.
+        hostless = bool(parts.scheme) and not scheme
+        host = None if hostless else parts.hostname
+        if not hostless and not _valid_port(parts.netloc):
             raise ValueError("the port is not a number from 0 to 65535")
     except ValueError as error:
         raise CookieError("the request URL is malformed") from error
