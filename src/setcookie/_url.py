@@ -18,6 +18,9 @@ _SPECIAL_SCHEMES = frozenset({"ftp", "http", "https", "ws", "wss"})
 _STRIPPED = "".join(chr(code) for code in range(0x21))
 _SCHEME = re.compile("([A-Za-z][A-Za-z0-9+.-]*):")
 _REMOVED = str.maketrans("", "", "\t\n\r")
+# The authority runs to the first slash, question mark or number sign, and its userinfo to
+# its last at sign, whatever brackets the userinfo holds.
+_USERINFO = re.compile(r"\A((?:[A-Za-z][A-Za-z0-9+.-]*:)?//)[^/?#]*@")
 # The forbidden domain code points of the WHATWG URL Standard.
 _FORBIDDEN = frozenset(chr(code) for code in range(0x20)) | frozenset(" #%/:<>?@[\\]^|\x7f")
 # The path percent-encode set; every code point above U+007E is encoded as well.
@@ -48,7 +51,8 @@ def request_of(url: str) -> Request:
     number of slashes may follow the scheme, as in that parser. A bracketed host must be an
     IPv6 address without a zone ID and is serialized as that parser does (``[0:0::1]`` is
     ``::1``). As in that parser, C0 controls and spaces are stripped from both ends, tab and
-    newlines removed, and a port must be empty or a number from 0 to 65535.
+    newlines removed, the userinfo dropped up to the last ``@`` of the authority, and a port
+    must be empty or a number from 0 to 65535.
     """
     if not isinstance(url, str):
         raise type_error("url", "a str", url)
@@ -56,20 +60,18 @@ def request_of(url: str) -> Request:
     scheme = _SCHEME.match(url)
     if scheme and scheme.group(1).lower() in _SPECIAL_SCHEMES:
         url = _special(url, len(scheme.group(1)))
+    url = _USERINFO.sub(r"\1", url, count=1)
     try:
         parts = urlsplit(url)
         host = parts.hostname
-        if not _valid_port(parts.netloc.rpartition("@")[2]):
+        if not _valid_port(parts.netloc):
             raise ValueError("the port is not a number from 0 to 65535")
     except ValueError as error:
         raise CookieError("the request URL is malformed") from error
     if not host:
         raise CookieError("the request URL has no host")
     try:
-        if parts.netloc.rpartition("@")[2].startswith("["):
-            canonical = _ipv6(host)
-        else:
-            canonical = _domain(host)
+        canonical = _ipv6(host) if parts.netloc.startswith("[") else _domain(host)
     except (ValueError, OverflowError):
         raise CookieError(f"the request host cannot be canonicalized: {shown(host)}") from None
     return Request(canonical, _path(parts.path), parts.scheme.lower() in _SECURE_SCHEMES)

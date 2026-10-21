@@ -79,6 +79,8 @@ def test_build_is_linear() -> None:
 def test_a_long_url_is_linear() -> None:
     _linear(lambda n: lambda: receive("a=b", "https://h.example/" + "a/" * n, now=NOW))
     _linear(lambda n: lambda: receive("a=b", "https://" + "a." * n + "example/", now=NOW))
+    _linear(lambda n: lambda: receive("a=b", "https://" + "[a:" * n + "@x.com/", now=NOW))
+    _linear(lambda n: lambda: receive("a=b", "https://x.com/" + "//a" * n, now=NOW))
 
 
 def test_ten_megabytes_are_refused_quickly() -> None:

@@ -149,6 +149,11 @@ written in ASCII digits; any other port makes the URL malformed and raises `Cook
 as URL parsers refuse it. This also refuses `https://u:p\@x.com/`, whose authority ends at
 the backslash and so has the port `p`.
 
+The userinfo of the authority (everything up to its last `@`, the authority ending at the
+first `/`, `?` or `#`) is dropped before the host is read, whatever it holds, as in that
+parser: `http://[::1]@a.com/p` and `https://u:pw@x.com/` have the hosts `a.com` and
+`x.com`, and a colon in the userinfo is never read as a port.
+
 The request path is normalized the way that parser does it before it gives the default
 path or is matched: spaces, double quotes, `<`, `>`, `^`, backquotes, braces, controls
 and non-ASCII characters are percent-encoded as UTF-8, existing `%XX` escapes are kept,
@@ -240,6 +245,8 @@ extension names and command line input. What changed:
 - C0 controls and spaces are stripped from both ends of a request URL (0.2.0 kept a
   trailing one in the host or path), and a port that is not empty or a number from 0 to
   65535 raises `CookieError` (0.2.0 ignored the port).
+- The userinfo of a request URL is dropped up to the last `@` of its authority, so a `[`
+  or `]` in it no longer makes the URL malformed (0.2.0 raised `CookieError`).
 - An IPv6 request host is stored in its compressed form (`::1` for `[0:0::1]`), and one
   with a zone ID raises `CookieError`.
 - `is_public_suffix` gets the Domain without a trailing dot.

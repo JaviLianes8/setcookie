@@ -87,6 +87,9 @@ Every change against 0.2.0 is listed here; the
 - A request URL whose port is not empty or a number from 0 to 65535 in ASCII digits
   raises `CookieError("the request URL is malformed")`, as URL parsers refuse it; 0.2.0
   ignored the port, so `https://x.com:abc/` was read as `x.com`.
+- The userinfo of a request URL is dropped up to the last `@` of its authority before the
+  host is read, as the WHATWG URL parser does, so a `[` or `]` in it no longer hides the
+  host: `http://[::1]@a.com/p` has the host `a.com` (0.2.0 raised `CookieError`).
 - A bracketed IPv6 request host is serialized as the WHATWG URL Standard does it
   (`[0:0::1]` is `::1`, `[::FFFF:1.2.3.4]` is `::ffff:102:304`), so spellings of one
   address match each other, and a host with a zone ID (`[fe80::1%25eth0]`) raises
