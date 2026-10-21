@@ -61,7 +61,7 @@ Defects found in 0.2.0 by reading and then reproducing:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 52, every non-equivalent mutant killed (one survivor fixed with a contract, one equivalent) |
-| 19 | Five independent QA lenses | rounds 1 to 8: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
+| 19 | Five independent QA lenses | rounds 1 to 9: all findings fixed or disputed with evidence (see QA lenses), re-verification pending |
 
 ## API review (item 1)
 
@@ -595,3 +595,63 @@ Gates at 52d298f: `ruff format --check .`, `ruff check .`, `mypy --strict src` a
 PC (CPython 3.14.2, turn elena/8, low priority, clean clone of 52d298f, fetched sources
 absent, so their tests and the opt-in e2e test skip): 823 tests, 800 passed, 23 skipped,
 none failed.
+
+### Round 9
+
+Lenses d and e ran again against cb6915d (the fourth round of the second full pass).
+Lens d confirmed R1 (a backslash after a bracketed host) and R2 (trailing C0 controls and
+spaces) fixed in clean 3.14.2 venvs from the wheel, from the sdist and from PyPI 0.2.0
+upgraded in place. Lens e confirmed E1 to E5 fixed, killed all 11 re-applied mutants, and
+swept 30 new probes on `_url.py` (21 killed; three cannot fail the suite: P18 is
+unobservable on 3.10, 3.13 and 3.14, where `urlsplit` itself refuses `[::1]x`, and killed
+on 3.11.5, while P24 and P30 are equivalent). Every new finding is fixed below; none is
+disputed. Each behaviour fix has a contract in `tests/test_qa9_fixes.py`: the four cases of
+`test_brackets_in_the_userinfo_do_not_hide_the_host` with a `[` or `]` in the userinfo
+failed on cb6915d first, and the other cases pin behaviour that was already right and fail
+on their mutant. Expected hosts and paths were
+measured on this PC with Node.js 24.18.0 `new URL(...)`; 0.2.0 (73f9d14) was run to
+confirm it raised `CookieError` for the same URLs. The change is in the 1.0.0 section of
+the CHANGELOG and in the GUIDE.
+
+| Lens | Finding | Fix |
+| --- | --- | --- |
+| d | N1: a `[` or `]` in the userinfo made `urlsplit` raise, so `http://[::1]@a.com/p`, `http://[::1]:x@a.com/p`, `https://u[x]@a.com/` and `http://a]@b.com/` were refused where the URL parser reads the host `a.com` or `b.com` | `_url.request_of` drops the userinfo before `urlsplit`: an anchored regular expression takes an optional scheme, `//`, and the authority up to its last `@` before the first `/`, `?` or `#`, and keeps only the scheme and `//`. The port check and the bracket test then read `netloc` directly. Docstring and GUIDE; `test_qa9_fixes::test_brackets_in_the_userinfo_do_not_hide_the_host` (5 URLs, through `request_of`, `receive` and `matches`), `test_only_the_authority_loses_its_userinfo` (`@` in the query, fragment and path, `//u@` inside the path, another scheme, a scheme-relative URL, a userinfo before a bracketed host, a backslash before `@` in a special URL); `test_hostile::test_a_long_url_is_linear` gains a userinfo of `[a:` and a path of `//a`, each repeated up to 400 000 times |
+| e | F1: the bracket branch of `_valid_port` not pinned (P20 `rest[2:]`, P29 `rpartition("]")`) | `test_qa9_fixes::test_a_bad_port_after_a_bracketed_host_is_malformed` (`[::1]:99999`, `:a`, `:65536`, `:]`, `:8]`, with and without a userinfo); each throws in Node |
+| e | F2: dropping the userinfo before the port check not pinned (P22, P23) | `test_qa9_fixes::test_a_colon_in_the_userinfo_is_not_a_port` (`u:pw@`, `u:1@`, `u:@`, `a@b:x@`, `a:b@c:d@`, a userinfo before a valid port), each giving `x.com` as in Node. The code these mutants touched is replaced by the N1 fix, so the same cases now pin the new regular expression |
+| e | F3: `_SCHEME` not pinned (P10 colon dropped, P09 `search`) | `test_qa9_fixes::test_a_special_scheme_needs_its_colon` (`http//x.com\a/b`, `https//x.com/a/b`, `wss x.com/a/b`, `http;//x.com/a/b`; each throws in Node, here `the request URL has no host`), `test_a_scheme_is_only_read_at_the_start_of_the_url` (`//x.com/http:\a`) |
+
+Lens e also noted, outside its lens and not counted, that a scheme-relative URL such as
+`//x.com/a` is accepted, where a WHATWG parser needs a base URL. Nothing is changed for it
+in this round; it is left to the correctness lens, as lens e asked.
+
+Each mutant applied alone to a copy of 1f98ac0 with bytecode off, against
+`tests/test_qa9_fixes.py`, `test_qa8_fixes.py`, `test_qa7_fixes.py`, `test_qa7_pins.py`
+and `test_hostile.py` (60 s per test), on CPython 3.14.6 on the laptop (turn portatil/1):
+
+| Mutant | Caught by |
+| --- | --- |
+| P20 bracketed port read from `rest[2:]` | test_qa9_fixes::test_a_bad_port_after_a_bracketed_host_is_malformed |
+| P29 `rpartition("]")` | test_qa9_fixes::test_a_bad_port_after_a_bracketed_host_is_malformed |
+| P10 colon dropped from the scheme expression | test_qa9_fixes::test_a_special_scheme_needs_its_colon |
+| P09 scheme searched, not matched | test_qa9_fixes::test_a_scheme_is_only_read_at_the_start_of_the_url |
+| userinfo removal dropped | test_qa9_fixes::test_brackets_in_the_userinfo_do_not_hide_the_host |
+| userinfo ends at the first `@` | test_qa9_fixes::test_a_colon_in_the_userinfo_is_not_a_port |
+| `?` does not end the authority | test_qa9_fixes::test_only_the_authority_loses_its_userinfo |
+| `#` does not end the authority | test_qa9_fixes::test_only_the_authority_loses_its_userinfo |
+| `/` does not end the authority | test_qa9_fixes::test_only_the_authority_loses_its_userinfo |
+| scheme required before `//` | test_qa9_fixes::test_only_the_authority_loses_its_userinfo |
+| anchor dropped | test_qa9_fixes::test_only_the_authority_loses_its_userinfo (and quadratic time on the long userinfo) |
+
+One mutant survives and is equivalent: removing `count=1` from the substitution, since an
+expression anchored at the start of the string can match only once.
+
+Disputed findings: none.
+
+Fix commits: e8158de and 1f98ac0, on top of cb6915d.
+
+Gates at 1f98ac0: `ruff format --check .`, `ruff check .`, `mypy --strict src` and
+`mypy --strict src tests` exit 0 on this PC (CPython 3.13.2); `pytest` exits 0 on the
+laptop (CPython 3.14.6, turn portatil/1, low priority, clean clone of 1f98ac0, fetched
+sources absent, so their tests and the opt-in e2e test skip): 855 tests, 832 passed,
+23 skipped, none failed. The same run at e8158de on Elena's PC (CPython 3.14.2, turn
+elena/7) also exited 0.
